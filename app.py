@@ -1,0 +1,232 @@
+"""Base Maestra de Cobranza - App Streamlit.
+
+Carga las tablas fuente (CSV/Excel o datos de ejemplo), construye
+BASE_MAESTRA_COBRANZA siguiendo los 8 pasos especificados, muestra
+indicadores y validaciones, y permite descargar el resultado para Power BI.
+
+Ejecutar:  streamlit run app.py
+"""
+from __future__ import annotations
+
+import io
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from src.io_fuentes import (
+    ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, leer_archivo, leer_ruta,
+)
+from src.consolidacion import construir_base_maestra
+
+DIR_EJEMPLO = Path(__file__).parent / "sample_data"
+
+st.set_page_config(
+    page_title="Base Maestra de Cobranza",
+    page_icon="📊",
+    layout="wide",
+)
+
+
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+def cargar_ejemplo() -> dict[str, pd.DataFrame]:
+    fuentes = {}
+    for nombre in ESQUEMA_FUENTES:
+        ruta = DIR_EJEMPLO / f"{nombre}.csv"
+        if ruta.exists():
+            fuentes[nombre] = leer_ruta(str(ruta))
+    return fuentes
+
+
+def a_excel(hojas: dict[str, pd.DataFrame]) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for nombre, df in hojas.items():
+            df.to_excel(writer, sheet_name=nombre[:31], index=False)
+    return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------
+# Sidebar - origen de datos
+# --------------------------------------------------------------------------
+st.sidebar.title("⚙️ Origen de datos")
+modo = st.sidebar.radio(
+    "Selecciona el origen",
+    ["Datos de ejemplo", "Cargar archivos"],
+    help="Usa los datos de ejemplo para una demo, o carga tus archivos CSV/Excel.",
+)
+
+fuentes: dict[str, pd.DataFrame] = {}
+
+if modo == "Datos de ejemplo":
+    fuentes = cargar_ejemplo()
+    st.sidebar.success(f"{len(fuentes)} fuentes de ejemplo cargadas.")
+else:
+    st.sidebar.caption("Formatos aceptados: .csv, .xlsx, .xls")
+    for nombre in FUENTES_OBLIGATORIAS:
+        archivo = st.sidebar.file_uploader(
+            nombre, type=["csv", "xlsx", "xls"], key=f"up_{nombre}",
+        )
+        if archivo is not None:
+            try:
+                fuentes[nombre] = leer_archivo(archivo.getvalue(), archivo.name)
+            except Exception as exc:  # noqa: BLE001
+                st.sidebar.error(f"{nombre}: error al leer ({exc})")
+
+fecha_proceso = st.sidebar.date_input("Fecha de proceso", value=datetime.now())
+
+faltantes = [f for f in FUENTES_OBLIGATORIAS if f not in fuentes]
+construir = st.sidebar.button("🚀 Construir Base Maestra", type="primary",
+                              disabled=bool(faltantes), width="stretch")
+if faltantes:
+    st.sidebar.warning("Fuentes pendientes: " + ", ".join(faltantes))
+
+
+# --------------------------------------------------------------------------
+# Construccion (cacheada en session_state)
+# --------------------------------------------------------------------------
+st.title("📊 Base Maestra de Cobranza")
+st.caption(
+    "Tabla única **BASE_MAESTRA_COBRANZA** · llave `NO_DAMA` · "
+    "lista para Power BI y dashboards operativos."
+)
+
+if construir:
+    fproc = datetime.combine(fecha_proceso, datetime.now().time())
+    with st.spinner("Consolidando fuentes…"):
+        st.session_state["resultado"] = construir_base_maestra(fuentes, fecha_proceso=fproc)
+
+resultado = st.session_state.get("resultado")
+
+if resultado is None:
+    st.info("Selecciona el origen de datos y presiona **Construir Base Maestra**.")
+    st.stop()
+
+if resultado.errores:
+    for e in resultado.errores:
+        st.error(e)
+    st.stop()
+
+base = resultado.base
+auditoria = resultado.auditoria
+bit = resultado.bitacora
+
+# --------------------------------------------------------------------------
+# Bitacora / metricas
+# --------------------------------------------------------------------------
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Registros procesados", bit["REG_PROCESADOS"])
+c2.metric("Consolidados", bit["REG_CONSOLIDADOS"])
+c3.metric("Con incidencia", bit["REG_CON_ERROR"])
+c4.metric("Fecha ejecución", bit["FECHA_EJECUCION"].split(" ")[0])
+
+st.divider()
+
+tab_base, tab_ind, tab_val, tab_desc = st.tabs(
+    ["🗂️ Base Maestra", "📈 Indicadores", "✅ Validaciones", "⬇️ Descargas"]
+)
+
+# --------------------------------------------------------------------------
+# TAB: Base Maestra (con filtros)
+# --------------------------------------------------------------------------
+with tab_base:
+    f1, f2, f3 = st.columns(3)
+    zonas = sorted(base["ZONA"].dropna().unique().tolist())
+    cobradores = sorted(base["ID_COBRADOR"].dropna().unique().tolist())
+    temporalidades = ["0-30", "31-60", "61-90", "91-120", "121-150", "151-180", "181+"]
+    fz = f1.multiselect("Zona", zonas)
+    fc = f2.multiselect("Cobrador", cobradores)
+    ft = f3.multiselect("Temporalidad", temporalidades)
+
+    vista = base.copy()
+    if fz:
+        vista = vista[vista["ZONA"].isin(fz)]
+    if fc:
+        vista = vista[vista["ID_COBRADOR"].isin(fc)]
+    if ft:
+        vista = vista[vista["TEMPORALIDAD"].isin(ft)]
+
+    st.caption(f"{len(vista)} de {len(base)} registros")
+    st.dataframe(vista, width="stretch", hide_index=True, height=460)
+
+# --------------------------------------------------------------------------
+# TAB: Indicadores
+# --------------------------------------------------------------------------
+with tab_ind:
+    cobertura = base["SALDO_FINAL"].sum()
+    i1, i2, i3 = st.columns(3)
+    i1.metric("Saldo final total", f"${cobertura:,.2f}")
+    i2.metric("Saldo actualizado total", f"${base['SALDO_ACTUALIZADO'].sum():,.2f}")
+    i3.metric("Días mora (promedio)", f"{base['DIAS_MORA'].dropna().mean():,.0f}")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("Saldo final por temporalidad")
+        por_temp = (base.groupby("TEMPORALIDAD", observed=True)["SALDO_FINAL"]
+                        .sum().reindex(temporalidades).dropna())
+        st.bar_chart(por_temp)
+    with col_b:
+        st.subheader("Saldo final por zona")
+        por_zona = base.groupby("ZONA")["SALDO_FINAL"].sum().sort_values(ascending=False)
+        st.bar_chart(por_zona)
+
+    st.subheader("Cartera por cobrador")
+    por_cob = (base.groupby("ID_COBRADOR", dropna=False)
+                   .agg(REGISTROS=("NO_DAMA", "count"),
+                        SALDO_FINAL=("SALDO_FINAL", "sum"))
+                   .reset_index().sort_values("SALDO_FINAL", ascending=False))
+    st.dataframe(por_cob, width="stretch", hide_index=True)
+
+# --------------------------------------------------------------------------
+# TAB: Validaciones / auditoria
+# --------------------------------------------------------------------------
+with tab_val:
+    dup = base["NO_DAMA"].is_unique
+    st.metric("NO_DAMA único (sin duplicados)", "✅ Sí" if dup else "❌ No")
+
+    if auditoria.empty:
+        st.success("Sin incidencias registradas.")
+    else:
+        resumen = (auditoria.groupby(["MOTIVO", "NIVEL"]).size()
+                            .rename("TOTAL").reset_index().sort_values("TOTAL", ascending=False))
+        st.subheader("Resumen de incidencias")
+        st.dataframe(resumen, width="stretch", hide_index=True)
+
+        st.subheader("Detalle de auditoría")
+        motivo = st.selectbox("Filtrar por motivo",
+                              ["(todos)"] + auditoria["MOTIVO"].unique().tolist())
+        det = auditoria if motivo == "(todos)" else auditoria[auditoria["MOTIVO"] == motivo]
+        st.dataframe(det, width="stretch", hide_index=True)
+
+# --------------------------------------------------------------------------
+# TAB: Descargas
+# --------------------------------------------------------------------------
+with tab_desc:
+    st.subheader("Exportar resultados")
+    stamp = datetime.now().strftime("%Y%m%d")
+
+    st.download_button(
+        "⬇️ BASE_MAESTRA_COBRANZA (CSV)",
+        data=base.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"BASE_MAESTRA_COBRANZA_{stamp}.csv",
+        mime="text/csv", width="stretch",
+    )
+
+    hojas = {
+        "BASE_MAESTRA_COBRANZA": base,
+        "AUDITORIA_RECHAZOS": auditoria,
+        "BITACORA": pd.DataFrame([bit]),
+    }
+    st.download_button(
+        "⬇️ Reporte completo (Excel · 3 hojas)",
+        data=a_excel(hojas),
+        file_name=f"BASE_MAESTRA_COBRANZA_{stamp}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
+
+    st.caption("El CSV usa codificación UTF-8 con BOM para abrir correctamente "
+               "los acentos en Excel / Power BI.")
