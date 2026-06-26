@@ -101,6 +101,21 @@ def construir_base_maestra(
     cartera = cartera[cartera["NO_DAMA"].notna() & (cartera["NO_DAMA"].astype(str).str.strip() != "")]
     reg_procesados = len(cartera)
 
+    if reg_procesados == 0:
+        cols = list(fuentes["CARTERA_INACTIVAS"].columns)
+        errores.append(
+            "CARTERA_INACTIVAS no tiene filas con NO_DAMA. Verifica que el "
+            "archivo tenga una columna 'NO_DAMA' con datos. "
+            f"Columnas detectadas: {', '.join(map(str, cols)) or '(ninguna)'}."
+        )
+        return ResultadoConsolidacion(
+            base=pd.DataFrame(columns=COLUMNAS_FINALES),
+            auditoria=pd.DataFrame(),
+            bitacora={"ESTATUS": "ERROR", "REG_PROCESADOS": 0,
+                      "REG_CONSOLIDADOS": 0, "REG_CON_ERROR": 0},
+            errores=errores,
+        )
+
     # Tipos
     for col in ("FECHA_FACTURA", "FECHA_INICIAL_VIGENCIA", "FECHA_FINAL_VIGENCIA", "FECHA_CARGA"):
         cartera[col] = pd.to_datetime(cartera[col], errors="coerce")
