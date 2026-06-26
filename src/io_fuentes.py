@@ -78,7 +78,8 @@ def leer_archivo(contenido: bytes, nombre_archivo: str) -> pd.DataFrame:
     """Lee CSV o Excel desde bytes y devuelve un DataFrame normalizado."""
     nombre = nombre_archivo.lower()
     if nombre.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(io.BytesIO(contenido))
+        # dtype=str preserva ceros a la izquierda en NO_DAMA / CODIGO_POSTAL, etc.
+        df = pd.read_excel(io.BytesIO(contenido), dtype=str)
     else:
         df = pd.read_csv(io.BytesIO(contenido), dtype=str, keep_default_na=True)
     return normalizar_dataframe(df)

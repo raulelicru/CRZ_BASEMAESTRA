@@ -12,7 +12,7 @@ implementaciones equivalentes y validadas**, que producen resultados idénticos:
 
 | Implementación | Uso | Estado |
 |---|---|---|
-| **App Streamlit** (`app.py`) | Carga de archivos, vista interactiva, descarga para Power BI | Validada (AppTest) |
+| **App Streamlit** (`streamlit_app.py`) | Carga de archivos, vista interactiva, descarga para Power BI | Validada (AppTest) |
 | **SQL Server** (`sql/`) | Despliegue en BD, ejecución diaria por SQL Agent | Validada (SQL Server 2022) |
 
 ---
@@ -24,7 +24,7 @@ base maestra y descargar el resultado.
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 Funcionalidad:
@@ -38,7 +38,7 @@ Funcionalidad:
 Estructura del código de la app:
 
 ```
-app.py                  Interfaz Streamlit
+streamlit_app.py                  Interfaz Streamlit
 src/io_fuentes.py       Carga y normalización de fuentes (alias CAMPAÑA→CAMPANA)
 src/consolidacion.py    Pipeline de 8 pasos + validaciones (pandas)
 sample_data/*.csv       Datos de ejemplo
