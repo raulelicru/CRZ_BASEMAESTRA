@@ -9,3 +9,10 @@ Thumbs.db
 *.log
 *.bak
 *.trace
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/

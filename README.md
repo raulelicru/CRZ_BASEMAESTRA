@@ -4,9 +4,51 @@ Solución de consolidación diaria que integra múltiples fuentes de cobranza en
 una **tabla única** lista para explotación en Power BI, dashboards operativos,
 seguimiento de recuperación y asignación de cobranza.
 
-- **Motor:** SQL Server (T-SQL). Validado en SQL Server 2022.
 - **Llave principal:** `NO_DAMA` (único en la tabla final).
 - **Llaves secundarias:** `NO_DAMA + CAMPANA_SALDO`, `ZONA`, `RUTA`, `ID_COBRADOR`.
+
+La misma lógica de consolidación (8 pasos + validaciones) está disponible en **dos
+implementaciones equivalentes y validadas**, que producen resultados idénticos:
+
+| Implementación | Uso | Estado |
+|---|---|---|
+| **App Streamlit** (`streamlit_app.py`) | Carga de archivos, vista interactiva, descarga para Power BI | Validada (AppTest) |
+| **SQL Server** (`sql/`) | Despliegue en BD, ejecución diaria por SQL Agent | Validada (SQL Server 2022) |
+
+---
+
+## 🖥️ App Streamlit
+
+Interfaz para cargar las fuentes (CSV/Excel o datos de ejemplo), construir la
+base maestra y descargar el resultado.
+
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+Funcionalidad:
+- **Origen de datos:** datos de ejemplo incluidos o carga de tus archivos.
+- **Construcción** de `BASE_MAESTRA_COBRANZA` (8 pasos) con un clic.
+- **Métricas** de bitácora: procesados / consolidados / con incidencia.
+- **Pestañas:** Base Maestra (con filtros por zona, cobrador, temporalidad),
+  Indicadores (saldo por temporalidad/zona/cobrador), Validaciones (auditoría) y
+  Descargas (CSV UTF-8-BOM y Excel de 3 hojas).
+
+Estructura del código de la app:
+
+```
+streamlit_app.py                  Interfaz Streamlit
+src/io_fuentes.py       Carga y normalización de fuentes (alias CAMPAÑA→CAMPANA)
+src/consolidacion.py    Pipeline de 8 pasos + validaciones (pandas)
+sample_data/*.csv       Datos de ejemplo
+```
+
+---
+
+## 🗄️ Implementación SQL Server (T-SQL)
+
+- **Motor:** SQL Server (T-SQL). Validado en SQL Server 2022.
 - **Frecuencia:** ejecución diaria vía SQL Server Agent.
 
 > **Nota de nomenclatura:** el campo de negocio *CAMPAÑA_SALDO* se normaliza a
