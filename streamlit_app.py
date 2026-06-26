@@ -17,6 +17,7 @@ import streamlit as st
 
 from src.io_fuentes import (
     ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, leer_archivo, leer_ruta,
+    diagnosticar_fuente,
 )
 from src.consolidacion import construir_base_maestra
 
@@ -65,14 +66,26 @@ if modo == "Datos de ejemplo":
     fuentes = cargar_ejemplo()
     st.sidebar.success(f"{len(fuentes)} fuentes de ejemplo cargadas.")
 else:
-    st.sidebar.caption("Formatos aceptados: .csv, .xlsx, .xls")
+    st.sidebar.caption("Formatos aceptados: .csv, .xlsx, .xls (un archivo por fuente)")
     for nombre in FUENTES_OBLIGATORIAS:
         archivo = st.sidebar.file_uploader(
             nombre, type=["csv", "xlsx", "xls"], key=f"up_{nombre}",
         )
         if archivo is not None:
             try:
-                fuentes[nombre] = leer_archivo(archivo.getvalue(), archivo.name)
+                df = leer_archivo(archivo.getvalue(), archivo.name)
+                fuentes[nombre] = df
+                diag = diagnosticar_fuente(df, nombre)
+                if diag["filas"] == 0:
+                    st.sidebar.error(f"{nombre}: 0 filas leídas (archivo vacío).")
+                elif diag["claves_faltantes"]:
+                    st.sidebar.error(
+                        f"{nombre}: falta la columna clave "
+                        f"{', '.join(diag['claves_faltantes'])}. "
+                        f"Columnas detectadas: {', '.join(diag['columnas'])}"
+                    )
+                else:
+                    st.sidebar.success(f"{nombre}: {diag['filas']} filas ✓")
             except Exception as exc:  # noqa: BLE001
                 st.sidebar.error(f"{nombre}: error al leer ({exc})")
 
