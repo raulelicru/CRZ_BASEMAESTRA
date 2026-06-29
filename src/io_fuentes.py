@@ -104,11 +104,20 @@ def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def _leer_excel(origen) -> pd.DataFrame:
     """Lee un Excel y devuelve la hoja con mas filas con datos.
 
+    Usa el motor 'calamine' (Rust) cuando esta disponible: es mucho mas rapido y
+    ligero en memoria que openpyxl, clave para archivos de cientos de miles de
+    filas en entornos con poca RAM. Cae a openpyxl si no esta instalado.
+
     Esto evita resultados vacios cuando la primera hoja es una portada o esta
     en blanco y los datos viven en otra hoja. dtype=str preserva ceros a la
     izquierda (NO_DAMA, CODIGO_POSTAL, etc.).
     """
-    hojas = pd.read_excel(origen, dtype=str, sheet_name=None)
+    try:
+        hojas = pd.read_excel(origen, dtype=str, sheet_name=None, engine="calamine")
+    except Exception:  # noqa: BLE001  (motor no disponible / origen no re-seekeable)
+        if hasattr(origen, "seek"):
+            origen.seek(0)
+        hojas = pd.read_excel(origen, dtype=str, sheet_name=None)
     if not hojas:
         return pd.DataFrame()
     # Elegir la hoja con mas filas no vacias.
