@@ -17,7 +17,7 @@ import streamlit as st
 
 from src.io_fuentes import (
     ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, COLUMNAS_CLAVE, leer_archivo, leer_ruta,
-    campos_mapeables, aplicar_mapeo,
+    campos_mapeables, aplicar_mapeo, sugerir_mapeo,
 )
 from src.consolidacion import construir_base_maestra
 
@@ -110,9 +110,9 @@ if modo_ejemplo:
 elif fuentes_raw:
     st.subheader("🔗 Mapeo de columnas")
     st.caption(
-        "Indica qué columna de **tu archivo** corresponde a cada campo. "
-        "Los campos con 🔑 son llave (obligatorios para el cruce). "
-        "Lo que la app reconoció se preselecciona automáticamente."
+        "La app **autodetecta** la columna de tu archivo para cada campo. "
+        "Revisa y corrige solo lo que haga falta. Los campos con 🔑 son llave "
+        "(obligatorios para el cruce)."
     )
     for nombre in FUENTES_OBLIGATORIAS:
         if nombre not in fuentes_raw:
@@ -121,15 +121,18 @@ elif fuentes_raw:
         cols = list(df.columns)
         opciones = [SIN_MAPEO] + cols
         claves = COLUMNAS_CLAVE.get(nombre, [])
-        faltan_clave = [c for c in claves if c not in cols]
-        with st.expander(f"{nombre} · {len(df)} filas", expanded=bool(faltan_clave)):
+        campos = campos_mapeables(nombre)
+        sugerencias = sugerir_mapeo(cols, campos)
+        faltan_clave = [c for c in claves if not sugerencias.get(c)]
+        n_auto = sum(1 for v in sugerencias.values() if v)
+        titulo = f"{nombre} · {len(df)} filas · {n_auto}/{len(campos)} autodetectados"
+        with st.expander(titulo, expanded=bool(faltan_clave)):
             mapeo: dict[str, str | None] = {}
-            campos = campos_mapeables(nombre)
             grid = st.columns(3)
             for i, campo in enumerate(campos):
                 es_clave = campo in claves
                 etiqueta = f"🔑 {campo}" if es_clave else campo
-                default = campo if campo in cols else SIN_MAPEO
+                default = sugerencias.get(campo) or SIN_MAPEO
                 sel = grid[i % 3].selectbox(
                     etiqueta, opciones, index=opciones.index(default),
                     key=f"map_{nombre}_{campo}",
