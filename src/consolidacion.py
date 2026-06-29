@@ -60,12 +60,18 @@ def _asegurar_columnas(df: pd.DataFrame, fuente: str) -> pd.DataFrame:
 
 
 def _concat_ws(df: pd.DataFrame, columnas: list[str]) -> pd.Series:
-    """Concatena columnas con espacio, ignorando vacios/nulos (como CONCAT_WS)."""
-    def _join(row):
-        vals = [str(row[c]).strip() for c in columnas
-                if pd.notna(row[c]) and str(row[c]).strip() != ""]
-        return " ".join(vals)
-    return df[columnas].apply(_join, axis=1)
+    """Concatena columnas con espacio, ignorando vacios/nulos (como CONCAT_WS).
+
+    Vectorizado: escala a cientos de miles de filas sin apply fila por fila.
+    """
+    partes = []
+    for col in columnas:
+        s = df[col].astype("string").str.strip()
+        partes.append(s.where(s.notna() & (s != ""), ""))
+    unido = partes[0]
+    for s in partes[1:]:
+        unido = unido.str.cat(s, sep=" ")
+    return unido.str.replace(r"\s+", " ", regex=True).str.strip()
 
 
 def _temporalidad(dias: pd.Series) -> pd.Series:
@@ -181,14 +187,12 @@ def construir_base_maestra(
     # ---- PASO 8: SALDO_FINAL ----
     df["SALDO_FINAL"] = (df["SALDO_DAMA"].fillna(0) - df["PAGOS_DAMA"].fillna(0)).round(2)
 
-    # PRECIERRE = PRECIERRE_2 si existe, en su defecto PRECIERRE_1
-    def _coalesce_precierre(row):
-        for c in ("PRECIERRE_2", "PRECIERRE_1"):
-            v = row.get(c)
-            if pd.notna(v) and str(v).strip() != "":
-                return v
-        return pd.NA
-    df["PRECIERRE"] = df.apply(_coalesce_precierre, axis=1)
+    # PRECIERRE = PRECIERRE_2 si existe, en su defecto PRECIERRE_1 (vectorizado)
+    p2 = df["PRECIERRE_2"].astype("string").str.strip()
+    p1 = df["PRECIERRE_1"].astype("string").str.strip()
+    p2 = p2.where(p2.notna() & (p2 != ""), pd.NA)
+    p1 = p1.where(p1.notna() & (p1 != ""), pd.NA)
+    df["PRECIERRE"] = p2.fillna(p1)
 
     df["FECHA_ACTUALIZACION"] = pd.Timestamp(fecha_proceso)
 
