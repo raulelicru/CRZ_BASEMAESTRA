@@ -28,8 +28,8 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `SALDO_DAMA` | decimal(18,2) | CARTERA_INACTIVAS (1) | Saldo origen |
 | `PAGOS_DAMA` | decimal(18,2) | CARTERA_INACTIVAS (1) | Pagos aplicados |
 | `SALDO_ACTUALIZADO` | decimal(18,2) | SALDOS_ACTUALIZADOS (6) | Saldo actualizado por campaña |
-| `TEMPORALIDAD` | varchar(10) | Calculado (7) | Bucket de antigüedad de mora |
-| `DIAS_MORA` | int | Calculado (7) | `fecha_proceso - FECHA_FACTURA` |
+| `TEMPORALIDAD` | varchar(10) | Calculado (7) | Clasificación por campaña: Inactivas / Mora 1 / Mora 2 / Mora 3 |
+| `DIAS_MORA` | int | Calculado (7) | `fecha_proceso - FECHA_FACTURA` (solo análisis; no define `TEMPORALIDAD`) |
 | `ID_SITUACION` | varchar(20) | CARTERA_MORA (4) | ID situación |
 | `DESC_SITUACION` | varchar(120) | CARTERA_MORA (4) | Descripción situación |
 | `ID_SITUACION_CIE` | varchar(20) | CARTERA_MORA (4) | ID situación CIE |
@@ -52,12 +52,15 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 
 ## Reglas de `TEMPORALIDAD`
 
-| Rango de `DIAS_MORA` | `TEMPORALIDAD` |
-|----------------------|----------------|
-| 0 – 30 | `0-30` |
-| 31 – 60 | `31-60` |
-| 61 – 90 | `61-90` |
-| 91 – 120 | `91-120` |
-| 121 – 150 | `121-150` |
-| 151 – 180 | `151-180` |
-| 181 o más | `181+` |
+Se determina por la **distancia a la campaña más reciente** de la cartera
+(ya no por `DIAS_MORA`):
+
+| Distancia a la campaña más reciente | `TEMPORALIDAD` |
+|-------------------------------------|----------------|
+| Campaña más reciente (0) | `Inactivas` |
+| 1 campaña anterior | `Mora 1` |
+| 2 campañas anteriores | `Mora 2` |
+| 3 o más campañas anteriores | `Mora 3` |
+
+Ejemplo (campaña más reciente `202513`): `202513`→Inactivas, `202512`→Mora 1,
+`202511`→Mora 2, `202510` y anteriores→Mora 3.

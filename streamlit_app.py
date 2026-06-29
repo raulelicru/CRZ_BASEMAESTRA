@@ -20,7 +20,7 @@ from src.io_fuentes import (
     ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, COLUMNAS_CLAVE, leer_archivo, leer_ruta,
     campos_mapeables, aplicar_mapeo, sugerir_mapeo,
 )
-from src.consolidacion import construir_base_maestra
+from src.consolidacion import construir_base_maestra, TEMPORALIDADES
 
 SIN_MAPEO = "— (ninguna) —"
 
@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.29-d · sin SALDO_FINAL · pagos sin excedente · fechas DD/MM/YYYY"
+VERSION = "2026.06.29-e · temporalidad por campaña · sin SALDO_FINAL · pagos sin excedente"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -241,7 +241,7 @@ with tab_base:
     f1, f2, f3 = st.columns(3)
     zonas = sorted(base["ZONA"].dropna().unique().tolist())
     cobradores = sorted(base["ID_COBRADOR"].dropna().unique().tolist())
-    temporalidades = ["0-30", "31-60", "61-90", "91-120", "121-150", "151-180", "181+"]
+    temporalidades = TEMPORALIDADES
     fz = f1.multiselect("Zona", zonas)
     fc = f2.multiselect("Cobrador", cobradores)
     ft = f3.multiselect("Temporalidad", temporalidades)
