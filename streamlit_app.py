@@ -9,6 +9,7 @@ Ejecutar:  streamlit run app.py
 from __future__ import annotations
 
 import io
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -96,6 +97,24 @@ else:
 
 fecha_proceso = st.sidebar.date_input("Fecha de proceso", value=datetime.now())
 
+# Cargar un mapeo previamente guardado (para no re-mapear tras un reinicio).
+if not modo_ejemplo and fuentes_raw:
+    cfg_file = st.sidebar.file_uploader(
+        "📂 Cargar mapeo guardado (JSON)", type=["json"], key="cfg_map",
+    )
+    if cfg_file is not None and st.session_state.get("_cfg_id") != cfg_file.file_id:
+        try:
+            cfg = json.loads(cfg_file.getvalue().decode("utf-8"))
+            for fnt, mp in cfg.items():
+                cols_fnt = list(fuentes_raw.get(fnt, pd.DataFrame()).columns)
+                for campo, col in mp.items():
+                    if col is None or col in cols_fnt:
+                        st.session_state[f"map_{fnt}_{campo}"] = col if col else SIN_MAPEO
+            st.session_state["_cfg_id"] = cfg_file.file_id
+            st.sidebar.success("Mapeo cargado. Revisa los paneles.")
+        except Exception as exc:  # noqa: BLE001
+            st.sidebar.error(f"Mapeo inválido: {exc}")
+
 faltantes = [f for f in FUENTES_OBLIGATORIAS if f not in fuentes_raw]
 construir = st.sidebar.button("🚀 Construir Base Maestra", type="primary",
                               disabled=bool(faltantes), width="stretch")
@@ -126,6 +145,7 @@ elif fuentes_raw:
         "Revisa y corrige solo lo que haga falta. Los campos con 🔑 son llave "
         "(obligatorios para el cruce)."
     )
+    mapeo_total: dict[str, dict[str, str | None]] = {}
     for nombre in FUENTES_OBLIGATORIAS:
         if nombre not in fuentes_raw:
             continue
@@ -151,6 +171,7 @@ elif fuentes_raw:
                     key=f"map_{nombre}_{campo}",
                 )
                 mapeo[campo] = None if sel == SIN_MAPEO else sel
+            mapeo_total[nombre] = mapeo
             fuentes[nombre] = aplicar_mapeo(df, mapeo)
             pendientes = [c for c in claves
                           if c not in fuentes[nombre].columns
@@ -159,6 +180,14 @@ elif fuentes_raw:
                 st.warning(f"Falta asignar la llave: {', '.join('🔑 '+p for p in pendientes)}")
             else:
                 st.success("Llaves asignadas ✓")
+
+    st.download_button(
+        "💾 Guardar mapeo (JSON)",
+        data=json.dumps(mapeo_total, ensure_ascii=False, indent=2),
+        file_name="mapeo_columnas.json",
+        mime="application/json",
+        help="Descarga el mapeo actual para recargarlo después y no repetirlo.",
+    )
 else:
     st.info("Sube tus archivos en la barra lateral para mapear las columnas.")
 
