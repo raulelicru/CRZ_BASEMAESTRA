@@ -16,10 +16,12 @@ import pandas as pd
 import streamlit as st
 
 from src.io_fuentes import (
-    ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, leer_archivo, leer_ruta,
-    diagnosticar_fuente,
+    ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, COLUMNAS_CLAVE, leer_archivo, leer_ruta,
+    campos_mapeables, aplicar_mapeo,
 )
 from src.consolidacion import construir_base_maestra
+
+SIN_MAPEO = "— (ninguna) —"
 
 DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
@@ -60,11 +62,12 @@ modo = st.sidebar.radio(
     help="Usa los datos de ejemplo para una demo, o carga tus archivos CSV/Excel.",
 )
 
-fuentes: dict[str, pd.DataFrame] = {}
+fuentes_raw: dict[str, pd.DataFrame] = {}
+modo_ejemplo = (modo == "Datos de ejemplo")
 
-if modo == "Datos de ejemplo":
-    fuentes = cargar_ejemplo()
-    st.sidebar.success(f"{len(fuentes)} fuentes de ejemplo cargadas.")
+if modo_ejemplo:
+    fuentes_raw = cargar_ejemplo()
+    st.sidebar.success(f"{len(fuentes_raw)} fuentes de ejemplo cargadas.")
 else:
     st.sidebar.caption("Formatos aceptados: .csv, .xlsx, .xls (un archivo por fuente)")
     for nombre in FUENTES_OBLIGATORIAS:
@@ -74,32 +77,22 @@ else:
         if archivo is not None:
             try:
                 df = leer_archivo(archivo.getvalue(), archivo.name)
-                fuentes[nombre] = df
-                diag = diagnosticar_fuente(df, nombre)
-                if diag["filas"] == 0:
-                    st.sidebar.error(f"{nombre}: 0 filas leídas (archivo vacío).")
-                elif diag["claves_faltantes"]:
-                    st.sidebar.error(
-                        f"{nombre}: falta la columna clave "
-                        f"{', '.join(diag['claves_faltantes'])}. "
-                        f"Columnas detectadas: {', '.join(diag['columnas'])}"
-                    )
-                else:
-                    st.sidebar.success(f"{nombre}: {diag['filas']} filas ✓")
+                fuentes_raw[nombre] = df
+                st.sidebar.caption(f"• {nombre}: {len(df)} filas")
             except Exception as exc:  # noqa: BLE001
                 st.sidebar.error(f"{nombre}: error al leer ({exc})")
 
 fecha_proceso = st.sidebar.date_input("Fecha de proceso", value=datetime.now())
 
-faltantes = [f for f in FUENTES_OBLIGATORIAS if f not in fuentes]
+faltantes = [f for f in FUENTES_OBLIGATORIAS if f not in fuentes_raw]
 construir = st.sidebar.button("🚀 Construir Base Maestra", type="primary",
                               disabled=bool(faltantes), width="stretch")
-if faltantes:
+if faltantes and not modo_ejemplo:
     st.sidebar.warning("Fuentes pendientes: " + ", ".join(faltantes))
 
 
 # --------------------------------------------------------------------------
-# Construccion (cacheada en session_state)
+# Titulo
 # --------------------------------------------------------------------------
 st.title("📊 Base Maestra de Cobranza")
 st.caption(
@@ -107,6 +100,55 @@ st.caption(
     "lista para Power BI y dashboards operativos."
 )
 
+# --------------------------------------------------------------------------
+# Mapeo de columnas (solo cuando se cargan archivos)
+# --------------------------------------------------------------------------
+fuentes: dict[str, pd.DataFrame] = {}
+
+if modo_ejemplo:
+    fuentes = fuentes_raw
+elif fuentes_raw:
+    st.subheader("🔗 Mapeo de columnas")
+    st.caption(
+        "Indica qué columna de **tu archivo** corresponde a cada campo. "
+        "Los campos con 🔑 son llave (obligatorios para el cruce). "
+        "Lo que la app reconoció se preselecciona automáticamente."
+    )
+    for nombre in FUENTES_OBLIGATORIAS:
+        if nombre not in fuentes_raw:
+            continue
+        df = fuentes_raw[nombre]
+        cols = list(df.columns)
+        opciones = [SIN_MAPEO] + cols
+        claves = COLUMNAS_CLAVE.get(nombre, [])
+        faltan_clave = [c for c in claves if c not in cols]
+        with st.expander(f"{nombre} · {len(df)} filas", expanded=bool(faltan_clave)):
+            mapeo: dict[str, str | None] = {}
+            campos = campos_mapeables(nombre)
+            grid = st.columns(3)
+            for i, campo in enumerate(campos):
+                es_clave = campo in claves
+                etiqueta = f"🔑 {campo}" if es_clave else campo
+                default = campo if campo in cols else SIN_MAPEO
+                sel = grid[i % 3].selectbox(
+                    etiqueta, opciones, index=opciones.index(default),
+                    key=f"map_{nombre}_{campo}",
+                )
+                mapeo[campo] = None if sel == SIN_MAPEO else sel
+            fuentes[nombre] = aplicar_mapeo(df, mapeo)
+            pendientes = [c for c in claves
+                          if c not in fuentes[nombre].columns
+                          or fuentes[nombre][c].isna().all()]
+            if pendientes:
+                st.warning(f"Falta asignar la llave: {', '.join('🔑 '+p for p in pendientes)}")
+            else:
+                st.success("Llaves asignadas ✓")
+else:
+    st.info("Sube tus archivos en la barra lateral para mapear las columnas.")
+
+# --------------------------------------------------------------------------
+# Construccion
+# --------------------------------------------------------------------------
 if construir:
     fproc = datetime.combine(fecha_proceso, datetime.now().time())
     with st.spinner("Consolidando fuentes…"):
