@@ -154,3 +154,28 @@ def diagnosticar_fuente(df: pd.DataFrame, fuente: str) -> dict:
         "columnas": list(df.columns),
         "claves_faltantes": faltan,
     }
+
+
+def campos_mapeables(fuente: str) -> list[str]:
+    """Campos canonicos que el usuario puede mapear para una fuente."""
+    return [c for c in ESQUEMA_FUENTES[fuente] if c != "FECHA_CARGA"]
+
+
+def aplicar_mapeo(df: pd.DataFrame, mapeo: dict[str, str | None]) -> pd.DataFrame:
+    """Renombra columnas del archivo a nombres canonicos segun `mapeo`.
+
+    `mapeo` = {campo_canonico: columna_del_archivo | None}. La columna elegida
+    por el usuario gana sobre cualquier columna canonica preexistente.
+    """
+    df = df.copy()
+    for canonico, columna in mapeo.items():
+        if not columna or columna not in df.columns or columna == canonico:
+            continue
+        if canonico in df.columns:
+            df = df.drop(columns=[canonico])
+        df = df.rename(columns={columna: canonico})
+    # Normaliza tipos de las llaves recien mapeadas.
+    for col in ("NO_DAMA", "ZONA", "CAMPANA_SALDO"):
+        if col in df.columns:
+            df[col] = df[col].astype("string").str.strip()
+    return df
