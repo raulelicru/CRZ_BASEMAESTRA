@@ -215,12 +215,14 @@ def construir_base_maestra(
     deuda = df["SALDO_DAMA"].fillna(0)
     s_raw = df["_S"]                       # saldo de SALDOSACTUALIZADOS (NaN si no cruza)
     cruza = s_raw.notna()
-    # Pagos aplicados = Deuda Original - Saldo. Si no cruza, se usan los pagos de cartera.
-    pagos_saldos = (deuda - s_raw).clip(lower=0)
     pagos_cartera = df["PAGOS_DAMA"].fillna(0)
-    df["PAGOS_DAMA"] = pagos_saldos.where(cruza, pagos_cartera).round(2)
-    # Saldo actualizado = Deuda - Pagos, SIN negativos (los <0 se muestran como 0).
-    saldo_op = s_raw.where(cruza, deuda - pagos_cartera).clip(lower=0).round(2)
+    # Saldo actualizado SIN negativos: max(Saldo, 0). Si no cruza: deuda - pagos de cartera.
+    saldo_op = (s_raw.clip(lower=0)
+                .where(cruza, (deuda - pagos_cartera).clip(lower=0))
+                .round(2))
+    # Pagos = Deuda - max(Saldo, 0): cuando hay sobrepago el excedente NO se considera
+    # (cuenta liquidada -> el pago registrado es la deuda que se debia).
+    df["PAGOS_DAMA"] = (deuda - saldo_op).where(cruza, pagos_cartera).round(2)
     df["SALDO_ACTUALIZADO"] = saldo_op
     df["SALDO_FINAL"] = saldo_op
     df.drop(columns=["_KEY", "_S"], inplace=True)
