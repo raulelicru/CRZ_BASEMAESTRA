@@ -30,7 +30,7 @@ COLUMNAS_FINALES = [
     "TELEFONO_CASA", "TELEFONO_CELULAR",
     "CAMPANA_SALDO", "FECHA_FACTURA", "FECHA_INICIAL_VIGENCIA",
     "FECHA_FINAL_VIGENCIA", "SEGMENTO", "ESTADO_PROCESO",
-    "SALDO_DAMA", "PAGOS_DAMA", "SALDO_ACTUALIZADO", "SALDO_FINAL",
+    "SALDO_DAMA", "PAGOS_DAMA", "SALDO_ACTUALIZADO",
     "TEMPORALIDAD", "DIAS_MORA",
     "ID_SITUACION", "DESC_SITUACION", "ID_SITUACION_CIE", "DESC_SITUACION_CIE",
     "TIPO_NOMBRAMIENTO",
@@ -224,7 +224,6 @@ def construir_base_maestra(
     # (cuenta liquidada -> el pago registrado es la deuda que se debia).
     df["PAGOS_DAMA"] = (deuda - saldo_op).where(cruza, pagos_cartera).round(2)
     df["SALDO_ACTUALIZADO"] = saldo_op
-    df["SALDO_FINAL"] = saldo_op
     df.drop(columns=["_KEY", "_S"], inplace=True)
 
     # PRECIERRE = PRECIERRE_2 si existe, en su defecto PRECIERRE_1 (vectorizado)

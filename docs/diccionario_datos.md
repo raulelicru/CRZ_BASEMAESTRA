@@ -28,7 +28,6 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `SALDO_DAMA` | decimal(18,2) | CARTERA_INACTIVAS (1) | Saldo origen |
 | `PAGOS_DAMA` | decimal(18,2) | CARTERA_INACTIVAS (1) | Pagos aplicados |
 | `SALDO_ACTUALIZADO` | decimal(18,2) | SALDOS_ACTUALIZADOS (6) | Saldo actualizado por campaña |
-| `SALDO_FINAL` | decimal(18,2) | Calculado (8) | `SALDO_DAMA - PAGOS_DAMA` |
 | `TEMPORALIDAD` | varchar(10) | Calculado (7) | Bucket de antigüedad de mora |
 | `DIAS_MORA` | int | Calculado (7) | `fecha_proceso - FECHA_FACTURA` |
 | `ID_SITUACION` | varchar(20) | CARTERA_MORA (4) | ID situación |
