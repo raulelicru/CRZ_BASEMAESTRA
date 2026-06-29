@@ -81,6 +81,26 @@ def _temporalidad(dias: pd.Series) -> pd.Series:
     return cat.astype("string").where(dias.notna())
 
 
+# Campos de fecha que en la base maestra se muestran como DD/MM/YYYY (sin hora).
+COLUMNAS_FECHA = [
+    "FECHA_FACTURA", "FECHA_INICIAL_VIGENCIA", "FECHA_FINAL_VIGENCIA",
+    "FECHA_PROMESA", "FECHA_CARGA", "FECHA_ACTUALIZACION",
+]
+
+
+def _ultimos2_campania(serie: pd.Series) -> pd.Series:
+    """Ultimos 2 digitos de la campania (p.ej. '202526' -> '26')."""
+    solo_digitos = serie.astype("string").str.replace(r"\D", "", regex=True)
+    return solo_digitos.str[-2:].fillna("")
+
+
+def _fmt_fecha(serie: pd.Series) -> pd.Series:
+    """Convierte a texto DD/MM/YYYY (sin hora); vacios quedan como NA."""
+    fechas = pd.to_datetime(serie, errors="coerce")
+    out = fechas.dt.strftime("%d/%m/%Y")
+    return out.where(fechas.notna(), pd.NA)
+
+
 def construir_base_maestra(
     fuentes: dict[str, pd.DataFrame],
     fecha_proceso: datetime | None = None,
@@ -88,7 +108,6 @@ def construir_base_maestra(
     fecha_proceso = fecha_proceso or datetime.now()
     fecha_dia = pd.Timestamp(fecha_proceso).normalize()
     errores: list[str] = []
-    auditoria_filas: list[dict] = []
 
     # ---- PASO 0: pre-flight de fuentes obligatorias ----
     faltantes = [f for f in FUENTES_OBLIGATORIAS if f not in fuentes or fuentes[f] is None]
@@ -136,15 +155,17 @@ def construir_base_maestra(
     )
     tmp = cartera_ord.drop_duplicates(subset=["NO_DAMA"], keep="first").copy()
 
-    # Auditoria: duplicados descartados
+    # Auditoria: duplicados descartados (vectorizado)
+    aud_dfs: list[pd.DataFrame] = []
     dup = cartera_ord[cartera_ord.duplicated(subset=["NO_DAMA"], keep="first")]
-    for _, r in dup.iterrows():
-        auditoria_filas.append({
-            "PASO": "PASO1_TMP_CARTERA", "MOTIVO": "NO_DAMA_DUPLICADO",
-            "NIVEL": "RECHAZO", "NO_DAMA": r["NO_DAMA"],
-            "CAMPANA_SALDO": r.get("CAMPANA_SALDO"), "ZONA": r.get("ZONA"),
+    if len(dup):
+        aud_dfs.append(pd.DataFrame({
+            "PASO": "PASO1_TMP_CARTERA", "MOTIVO": "NO_DAMA_DUPLICADO", "NIVEL": "RECHAZO",
+            "NO_DAMA": dup["NO_DAMA"].to_numpy(),
+            "CAMPANA_SALDO": dup["CAMPANA_SALDO"].to_numpy(),
+            "ZONA": dup["ZONA"].to_numpy(),
             "DETALLE": "Registro duplicado descartado; se conservo el mas reciente.",
-        })
+        }))
 
     # ---- PASO 2: CLIENTES ----
     cli = src["CLIENTES"].drop_duplicates(subset=["NO_DAMA"], keep="first")
@@ -172,20 +193,37 @@ def construir_base_maestra(
     df["NUMERO_GESTIONES"] = df["NUMERO_GESTIONES"].fillna(0).astype(int)
     df["FECHA_PROMESA"] = pd.to_datetime(df["FECHA_PROMESA"], errors="coerce")
 
-    # ---- PASO 6: SALDOS_ACTUALIZADOS (NO_DAMA + CAMPANA_SALDO) ----
+    # ---- PASO 6: SALDOS_ACTUALIZADOS (llave NO_DAMA + ultimos 2 digitos de campania) ----
+    # El "Saldo" de SALDOSACTUALIZADOS es el saldo posterior a pagos:
+    #   0  -> liquidada,  >0 -> pendiente,  <0 -> pago mayor al adeudo.
     sal = src["SALDOS_ACTUALIZADOS"].copy()
     sal["SALDO_ACTUALIZADO"] = pd.to_numeric(sal["SALDO_ACTUALIZADO"], errors="coerce")
-    sal = sal.drop_duplicates(subset=["NO_DAMA", "CAMPANA_SALDO"], keep="first")
-    df = df.merge(sal[["NO_DAMA", "CAMPANA_SALDO", "SALDO_ACTUALIZADO"]],
-                  on=["NO_DAMA", "CAMPANA_SALDO"], how="left")
+    sal["_KEY"] = (sal["NO_DAMA"].astype("string").str.strip()
+                   + _ultimos2_campania(sal["CAMPANA_SALDO"]))
+    sal = sal.drop_duplicates(subset=["_KEY"], keep="first")
+    df["_KEY"] = (df["NO_DAMA"].astype("string").str.strip()
+                  + _ultimos2_campania(df["CAMPANA_SALDO"]))
+    df = df.merge(sal[["_KEY", "SALDO_ACTUALIZADO"]].rename(columns={"SALDO_ACTUALIZADO": "_S"}),
+                  on="_KEY", how="left")
 
     # ---- PASO 7: indicadores ----
     df["DIAS_MORA"] = (fecha_dia - df["FECHA_FACTURA"]).dt.days
     df["DIAS_MORA"] = df["DIAS_MORA"].astype("Int64")
     df["TEMPORALIDAD"] = _temporalidad(df["DIAS_MORA"])
 
-    # ---- PASO 8: SALDO_FINAL ----
-    df["SALDO_FINAL"] = (df["SALDO_DAMA"].fillna(0) - df["PAGOS_DAMA"].fillna(0)).round(2)
+    # ---- PASO 8: pagos y saldos segun reglas de cobranza ----
+    deuda = df["SALDO_DAMA"].fillna(0)
+    s_raw = df["_S"]                       # saldo de SALDOSACTUALIZADOS (NaN si no cruza)
+    cruza = s_raw.notna()
+    # Pagos aplicados = Deuda Original - Saldo. Si no cruza, se usan los pagos de cartera.
+    pagos_saldos = (deuda - s_raw).clip(lower=0)
+    pagos_cartera = df["PAGOS_DAMA"].fillna(0)
+    df["PAGOS_DAMA"] = pagos_saldos.where(cruza, pagos_cartera).round(2)
+    # Saldo actualizado = Deuda - Pagos, SIN negativos (los <0 se muestran como 0).
+    saldo_op = s_raw.where(cruza, deuda - pagos_cartera).clip(lower=0).round(2)
+    df["SALDO_ACTUALIZADO"] = saldo_op
+    df["SALDO_FINAL"] = saldo_op
+    df.drop(columns=["_KEY", "_S"], inplace=True)
 
     # PRECIERRE = PRECIERRE_2 si existe, en su defecto PRECIERRE_1 (vectorizado)
     p2 = df["PRECIERRE_2"].astype("string").str.strip()
@@ -196,24 +234,32 @@ def construir_base_maestra(
 
     df["FECHA_ACTUALIZACION"] = pd.Timestamp(fecha_proceso)
 
-    # ---- Validaciones de negocio (advertencias) ----
-    sin_cob = df[df["ID_COBRADOR"].isna() | (df["ID_COBRADOR"].astype("string").str.strip() == "")]
-    for _, r in sin_cob.iterrows():
-        auditoria_filas.append({
+    # ---- Validaciones de negocio (vectorizadas) ----
+    mask_sc = df["ID_COBRADOR"].isna() | (df["ID_COBRADOR"].astype("string").str.strip() == "")
+    if mask_sc.any():
+        d = df.loc[mask_sc]
+        aud_dfs.append(pd.DataFrame({
             "PASO": "VALIDACIONES", "MOTIVO": "ZONA_SIN_COBRADOR", "NIVEL": "ADVERTENCIA",
-            "NO_DAMA": r["NO_DAMA"], "CAMPANA_SALDO": r.get("CAMPANA_SALDO"),
-            "ZONA": r.get("ZONA"),
+            "NO_DAMA": d["NO_DAMA"].to_numpy(), "CAMPANA_SALDO": d["CAMPANA_SALDO"].to_numpy(),
+            "ZONA": d["ZONA"].to_numpy(),
             "DETALLE": "La zona no tiene cobrador asignado en ZONAS_ASIGNADAS.",
-        })
+        }))
 
-    neg = df[df["SALDO_FINAL"] < 0]
-    for _, r in neg.iterrows():
-        auditoria_filas.append({
-            "PASO": "VALIDACIONES", "MOTIVO": "SALDO_NEGATIVO", "NIVEL": "ADVERTENCIA",
-            "NO_DAMA": r["NO_DAMA"], "CAMPANA_SALDO": r.get("CAMPANA_SALDO"),
-            "ZONA": r.get("ZONA"),
-            "DETALLE": f"SALDO_FINAL negativo = {r['SALDO_FINAL']}",
-        })
+    # Sobrepago: el saldo original venia negativo (pago mayor al adeudo) -> liquidada.
+    mask_sp = cruza & (s_raw < 0)
+    if mask_sp.any():
+        d = df.loc[mask_sp]
+        aud_dfs.append(pd.DataFrame({
+            "PASO": "VALIDACIONES", "MOTIVO": "CUENTA_LIQUIDADA_SOBREPAGO", "NIVEL": "ADVERTENCIA",
+            "NO_DAMA": d["NO_DAMA"].to_numpy(), "CAMPANA_SALDO": d["CAMPANA_SALDO"].to_numpy(),
+            "ZONA": d["ZONA"].to_numpy(),
+            "DETALLE": "Pago mayor al adeudo; deuda liquidada, saldo mostrado como 0.",
+        }))
+
+    # ---- Formato de fechas DD/MM/YYYY (sin hora) ----
+    for col in COLUMNAS_FECHA:
+        if col in df.columns:
+            df[col] = _fmt_fecha(df[col])
 
     # ---- Estructura final ----
     for col in COLUMNAS_FINALES:
@@ -221,10 +267,9 @@ def construir_base_maestra(
             df[col] = pd.NA
     base = df[COLUMNAS_FINALES].reset_index(drop=True)
 
-    auditoria = pd.DataFrame(
-        auditoria_filas,
-        columns=["PASO", "MOTIVO", "NIVEL", "NO_DAMA", "CAMPANA_SALDO", "ZONA", "DETALLE"],
-    )
+    cols_aud = ["PASO", "MOTIVO", "NIVEL", "NO_DAMA", "CAMPANA_SALDO", "ZONA", "DETALLE"]
+    auditoria = (pd.concat(aud_dfs, ignore_index=True)[cols_aud]
+                 if aud_dfs else pd.DataFrame(columns=cols_aud))
 
     bitacora = {
         "PROCESO": "BASE_MAESTRA_COBRANZA",
