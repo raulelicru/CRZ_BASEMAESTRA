@@ -38,7 +38,8 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `STATUS_GESTION` | varchar(60) | LAYOUT_ARABELA (5) | Estatus de la última gestión |
 | `MOTIVO_NO_COBRO` | varchar(120) | LAYOUT_ARABELA (5) | Motivo de no cobro |
 | `DICTAMINACION` | varchar(120) | LAYOUT_ARABELA (5) | Dictaminación (Tipificación) |
-| `COMENTARIO` | varchar(255) | LAYOUT_ARABELA (5) | Comentario de la última gestión |
+| `COMENTARIO` | varchar(255) | LAYOUT_ARABELA (5) | Comentario de la última gestión (íntegro) |
+| `FECHA_ULTIMA_LLAMADA` | varchar(10) | Calculado (5) | Fecha entre paréntesis al inicio de `COMENTARIO` (DD/MM/YYYY); vacía si no hay |
 | `NUMERO_GESTIONES` | int | LAYOUT_ARABELA (5) | Conteo de gestiones por `NO_DAMA` |
 | `FECHA_PROMESA` | date | LAYOUT_ARABELA (5) | Fecha de promesa de pago |
 | `PRIMERA_ORDEN` | varchar(40) | CARTERA_MORA (4) | Primera orden |
