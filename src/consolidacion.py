@@ -35,7 +35,7 @@ COLUMNAS_FINALES = [
     "ID_SITUACION", "DESC_SITUACION", "ID_SITUACION_CIE", "DESC_SITUACION_CIE",
     "TIPO_NOMBRAMIENTO",
     "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION", "COMENTARIO",
-    "NUMERO_GESTIONES", "FECHA_PROMESA",
+    "FECHA_ULTIMA_LLAMADA", "NUMERO_GESTIONES", "FECHA_PROMESA",
     "PRIMERA_ORDEN", "REACTIVACION", "CANCELACION",
     "PRECIERRE", "PRECIERRE_1", "PRECIERRE_2", "GEOLOCALIZACION",
     "FECHA_CARGA", "FECHA_ACTUALIZACION",
@@ -260,6 +260,16 @@ def construir_base_maestra(
     df["PRECIERRE"] = p2.fillna(p1)
 
     df["FECHA_ACTUALIZACION"] = pd.Timestamp(fecha_proceso)
+
+    # FECHA_ULTIMA_LLAMADA: fecha entre parentesis al INICIO del COMENTARIO.
+    # El COMENTARIO original NO se modifica; solo se copia la fecha (DD/MM/YYYY).
+    if "COMENTARIO" in df.columns:
+        fecha_txt = (df["COMENTARIO"].astype("string")
+                     .str.extract(r"^\s*\(\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*\)")[0])
+        fll = pd.to_datetime(fecha_txt, dayfirst=True, errors="coerce")
+        df["FECHA_ULTIMA_LLAMADA"] = fll.dt.strftime("%d/%m/%Y").where(fll.notna(), pd.NA)
+    else:
+        df["FECHA_ULTIMA_LLAMADA"] = pd.NA
 
     # ---- Validaciones de negocio (vectorizadas) ----
     mask_sc = df["ID_COBRADOR"].isna() | (df["ID_COBRADOR"].astype("string").str.strip() == "")
