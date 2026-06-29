@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.29-e · temporalidad por campaña · sin SALDO_FINAL · pagos sin excedente"
+VERSION = "2026.06.29-f · gestión ARABELA + COMENTARIO · temporalidad por campaña"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",

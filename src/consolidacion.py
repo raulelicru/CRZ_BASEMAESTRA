@@ -34,7 +34,7 @@ COLUMNAS_FINALES = [
     "TEMPORALIDAD", "DIAS_MORA",
     "ID_SITUACION", "DESC_SITUACION", "ID_SITUACION_CIE", "DESC_SITUACION_CIE",
     "TIPO_NOMBRAMIENTO",
-    "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION",
+    "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION", "COMENTARIO",
     "NUMERO_GESTIONES", "FECHA_PROMESA",
     "PRIMERA_ORDEN", "REACTIVACION", "CANCELACION",
     "PRECIERRE", "PRECIERRE_1", "PRECIERRE_2", "GEOLOCALIZACION",
@@ -211,7 +211,8 @@ def construir_base_maestra(
     conteo = ara.groupby("NO_DAMA").size().rename("NUMERO_GESTIONES").reset_index()
     ult = (ara.sort_values(["NO_DAMA", "FECHA_GESTION"], ascending=[True, False], na_position="last")
               .drop_duplicates(subset=["NO_DAMA"], keep="first"))
-    cols_ult = ["NO_DAMA", "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION", "FECHA_PROMESA"]
+    cols_ult = ["NO_DAMA", "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION",
+                "COMENTARIO", "FECHA_PROMESA"]
     df = df.merge(ult[cols_ult], on="NO_DAMA", how="left", suffixes=("", "_ARA"))
     df = df.merge(conteo, on="NO_DAMA", how="left")
     df["NUMERO_GESTIONES"] = df["NUMERO_GESTIONES"].fillna(0).astype(int)
