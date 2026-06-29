@@ -44,6 +44,18 @@ def cargar_ejemplo() -> dict[str, pd.DataFrame]:
     return fuentes
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def leer_archivo_cache(file_id: str, nombre_archivo: str, _contenido: bytes) -> pd.DataFrame:
+    """Lee y normaliza un archivo UNA sola vez (cacheado por file_id).
+
+    Evita re-parsear Excels grandes en cada interaccion (clave en archivos de
+    cientos de miles de filas y en entornos con poca RAM como Streamlit Cloud).
+    `_contenido` lleva guion bajo para que Streamlit NO lo incluya en la llave
+    de cache (no rehashea megabytes en cada rerun).
+    """
+    return leer_archivo(_contenido, nombre_archivo)
+
+
 def a_excel(hojas: dict[str, pd.DataFrame]) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -76,9 +88,9 @@ else:
         )
         if archivo is not None:
             try:
-                df = leer_archivo(archivo.getvalue(), archivo.name)
+                df = leer_archivo_cache(archivo.file_id, archivo.name, archivo.getvalue())
                 fuentes_raw[nombre] = df
-                st.sidebar.caption(f"• {nombre}: {len(df)} filas")
+                st.sidebar.caption(f"• {nombre}: {len(df):,} filas")
             except Exception as exc:  # noqa: BLE001
                 st.sidebar.error(f"{nombre}: error al leer ({exc})")
 
