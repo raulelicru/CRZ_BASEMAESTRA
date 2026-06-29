@@ -127,6 +127,7 @@ elif fuentes_raw:
         n_auto = sum(1 for v in sugerencias.values() if v)
         titulo = f"{nombre} · {len(df)} filas · {n_auto}/{len(campos)} autodetectados"
         with st.expander(titulo, expanded=bool(faltan_clave)):
+            st.caption("📋 Columnas en tu archivo: " + ", ".join(f"`{c}`" for c in cols))
             mapeo: dict[str, str | None] = {}
             grid = st.columns(3)
             for i, campo in enumerate(campos):
