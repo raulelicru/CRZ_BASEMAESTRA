@@ -26,6 +26,10 @@ SIN_MAPEO = "— (ninguna) —"
 
 DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
+# Marcador de version: cambia con cada despliegue para verificar que la app
+# desplegada tiene el codigo mas reciente.
+VERSION = "2026.06.29-b · fechas DD/MM/YYYY · pagos por dama+campaña · saldos sin negativos"
+
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
     page_icon="📊",
@@ -130,6 +134,7 @@ st.caption(
     "Tabla única **BASE_MAESTRA_COBRANZA** · llave `NO_DAMA` · "
     "lista para Power BI y dashboards operativos."
 )
+st.caption(f"🟢 Versión desplegada: `{VERSION}`")
 
 # --------------------------------------------------------------------------
 # Mapeo de columnas (solo cuando se cargan archivos)
