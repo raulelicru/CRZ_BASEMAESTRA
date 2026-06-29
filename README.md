@@ -123,7 +123,7 @@ por completo (`TRUNCATE` + `INSERT` dentro de una transacción), garantizando
 **Reglas de cálculo**
 
 - `DIAS_MORA = fecha_proceso - FECHA_FACTURA`.
-- `TEMPORALIDAD`: `0-30`, `31-60`, `61-90`, `91-120`, `121-150`, `151-180`, `181+`.
+- `TEMPORALIDAD`: por campaña (distancia a la más reciente) → `Inactivas`, `Mora 1`, `Mora 2`, `Mora 3`.
 - `SALDO_FINAL = ISNULL(SALDO_DAMA,0) - ISNULL(PAGOS_DAMA,0)` (si no hay pagos → `SALDO_DAMA`).
 - `PRECIERRE` = `PRECIERRE_2` si existe, en su defecto `PRECIERRE_1`.
 - Los cruces 2–6 usan **LEFT JOIN**: nunca se pierde un `NO_DAMA` de cartera.

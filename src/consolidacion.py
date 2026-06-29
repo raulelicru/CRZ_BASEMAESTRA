@@ -74,11 +74,35 @@ def _concat_ws(df: pd.DataFrame, columnas: list[str]) -> pd.Series:
     return unido.str.replace(r"\s+", " ", regex=True).str.strip()
 
 
-def _temporalidad(dias: pd.Series) -> pd.Series:
-    bins = [-float("inf"), 30, 60, 90, 120, 150, 180, float("inf")]
-    labels = ["0-30", "31-60", "61-90", "91-120", "121-150", "151-180", "181+"]
-    cat = pd.cut(dias, bins=bins, labels=labels)
-    return cat.astype("string").where(dias.notna())
+# Clasificacion de TEMPORALIDAD por campaña (ya no por dias de mora).
+TEMPORALIDADES = ["Inactivas", "Mora 1", "Mora 2", "Mora 3"]
+
+
+def _num_campania(serie: pd.Series) -> pd.Series:
+    """Valor numerico de la campaña (p.ej. '202513' -> 202513, 'CAMPAÑA 13' -> 13)."""
+    digitos = serie.astype("string").str.replace(r"\D", "", regex=True)
+    return pd.to_numeric(digitos, errors="coerce")
+
+
+def _temporalidad_campania(campania: pd.Series) -> pd.Series:
+    """Temporalidad segun la distancia a la campaña mas reciente de la cartera.
+
+    0 campañas (la mas reciente) -> Inactivas
+    1 campaña anterior           -> Mora 1
+    2 campañas anteriores        -> Mora 2
+    3 o mas campañas anteriores  -> Mora 3
+    """
+    camp = _num_campania(campania)
+    out = pd.Series(pd.NA, index=campania.index, dtype="string")
+    if not camp.notna().any():
+        return out
+    max_camp = camp.max()
+    diff = max_camp - camp
+    out[diff == 0] = "Inactivas"
+    out[diff == 1] = "Mora 1"
+    out[diff == 2] = "Mora 2"
+    out[diff >= 3] = "Mora 3"
+    return out
 
 
 # Campos de fecha que en la base maestra se muestran como DD/MM/YYYY (sin hora).
@@ -207,9 +231,10 @@ def construir_base_maestra(
                   on="_KEY", how="left")
 
     # ---- PASO 7: indicadores ----
+    # DIAS_MORA se conserva para analisis; TEMPORALIDAD ya NO depende de el.
     df["DIAS_MORA"] = (fecha_dia - df["FECHA_FACTURA"]).dt.days
     df["DIAS_MORA"] = df["DIAS_MORA"].astype("Int64")
-    df["TEMPORALIDAD"] = _temporalidad(df["DIAS_MORA"])
+    df["TEMPORALIDAD"] = _temporalidad_campania(df["CAMPANA_SALDO"])
 
     # ---- PASO 8: pagos y saldos segun reglas de cobranza ----
     deuda = df["SALDO_DAMA"].fillna(0)
