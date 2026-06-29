@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.29-c · fechas DD/MM/YYYY · pagos sin excedente · saldos sin negativos"
+VERSION = "2026.06.29-d · sin SALDO_FINAL · pagos sin excedente · fechas DD/MM/YYYY"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -261,28 +261,27 @@ with tab_base:
 # TAB: Indicadores
 # --------------------------------------------------------------------------
 with tab_ind:
-    cobertura = base["SALDO_FINAL"].sum()
     i1, i2, i3 = st.columns(3)
-    i1.metric("Saldo final total", f"${cobertura:,.2f}")
-    i2.metric("Saldo actualizado total", f"${base['SALDO_ACTUALIZADO'].sum():,.2f}")
+    i1.metric("Saldo actualizado total", f"${base['SALDO_ACTUALIZADO'].sum():,.2f}")
+    i2.metric("Pagos totales", f"${base['PAGOS_DAMA'].sum():,.2f}")
     i3.metric("Días mora (promedio)", f"{base['DIAS_MORA'].dropna().mean():,.0f}")
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.subheader("Saldo final por temporalidad")
-        por_temp = (base.groupby("TEMPORALIDAD", observed=True)["SALDO_FINAL"]
+        st.subheader("Saldo actualizado por temporalidad")
+        por_temp = (base.groupby("TEMPORALIDAD", observed=True)["SALDO_ACTUALIZADO"]
                         .sum().reindex(temporalidades).dropna())
         st.bar_chart(por_temp)
     with col_b:
-        st.subheader("Saldo final por zona")
-        por_zona = base.groupby("ZONA")["SALDO_FINAL"].sum().sort_values(ascending=False)
+        st.subheader("Saldo actualizado por zona")
+        por_zona = base.groupby("ZONA")["SALDO_ACTUALIZADO"].sum().sort_values(ascending=False)
         st.bar_chart(por_zona)
 
     st.subheader("Cartera por cobrador")
     por_cob = (base.groupby("ID_COBRADOR", dropna=False)
                    .agg(REGISTROS=("NO_DAMA", "count"),
-                        SALDO_FINAL=("SALDO_FINAL", "sum"))
-                   .reset_index().sort_values("SALDO_FINAL", ascending=False))
+                        SALDO_ACTUALIZADO=("SALDO_ACTUALIZADO", "sum"))
+                   .reset_index().sort_values("SALDO_ACTUALIZADO", ascending=False))
     st.dataframe(por_cob, width="stretch", hide_index=True)
 
 # --------------------------------------------------------------------------
