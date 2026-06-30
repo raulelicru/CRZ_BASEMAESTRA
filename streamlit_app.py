@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.30-i · incorpora cuentas de Cartera Moras (NUEVA)"
+VERSION = "2026.06.30-j · incorpora Cartera Moras (NUEVA) · robusto a caché"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -218,6 +218,12 @@ if resultado.errores:
 base = resultado.base
 auditoria = resultado.auditoria
 bit = resultado.bitacora
+
+# Defensa: si por una versión en caché faltara alguna columna esperada, se crea
+# vacía para no romper la app (un reinicio completo la repuebla correctamente).
+for _col in ("CARTERA_MORAS", "FECHA_ULTIMA_LLAMADA", "COMENTARIO", "SALDO_ACTUALIZADO"):
+    if _col not in base.columns:
+        base[_col] = pd.NA
 
 # --------------------------------------------------------------------------
 # Bitacora / metricas
