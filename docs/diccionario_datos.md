@@ -49,6 +49,7 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `PRECIERRE_1` | varchar(40) | CARTERA_MORA (4) | Precierre 1 |
 | `PRECIERRE_2` | varchar(40) | CARTERA_MORA (4) | Precierre 2 |
 | `GEOLOCALIZACION` | varchar(80) | CARTERA_MORA (4) | Geolocalización |
+| `CARTERA_MORAS` | varchar(10) | Calculado | `NUEVA` si la cuenta se incorporó desde Cartera de Moras; vacío si vino de Inactivas |
 | `FECHA_CARGA` | datetime2 | CARTERA_INACTIVAS (1) | Fecha de carga del origen |
 | `FECHA_ACTUALIZACION` | datetime2 | Proceso | Fecha/hora de la corrida |
 

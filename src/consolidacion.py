@@ -38,6 +38,7 @@ COLUMNAS_FINALES = [
     "FECHA_ULTIMA_LLAMADA", "NUMERO_GESTIONES", "FECHA_PROMESA",
     "PRIMERA_ORDEN", "REACTIVACION", "CANCELACION",
     "PRECIERRE", "PRECIERRE_1", "PRECIERRE_2", "GEOLOCALIZACION",
+    "CARTERA_MORAS",
     "FECHA_CARGA", "FECHA_ACTUALIZACION",
 ]
 
@@ -191,6 +192,45 @@ def construir_base_maestra(
             "DETALLE": "Registro duplicado descartado; se conservo el mas reciente.",
         }))
 
+    # ---- Incorporar cuentas de CARTERA_MORA no presentes (NO_DAMA + campaña) ----
+    # Tras armar la base con Inactivas, se agregan las cuentas de Moras cuya
+    # combinacion NO_DAMA + ultimos 2 digitos de campaña no exista aun. Se les
+    # aplican luego los mismos cruces (PASO 2..8). Se marcan con CARTERA_MORAS=NUEVA.
+    tmp["CARTERA_MORAS"] = ""
+    cols_principal = ["NO_DAMA", "ZONA", "CAMPANA_SALDO", "FECHA_FACTURA",
+                      "FECHA_INICIAL_VIGENCIA", "FECHA_FINAL_VIGENCIA", "SEGMENTO",
+                      "ESTADO_PROCESO", "SALDO_DAMA", "PAGOS_DAMA", "FECHA_CARGA"]
+    mext = src["CARTERA_MORA"].copy()
+    mext = mext[
+        mext["NO_DAMA"].notna()
+        & (mext["NO_DAMA"].astype("string").str.strip() != "")
+        & mext["CAMPANA_SALDO"].notna()
+        & (mext["CAMPANA_SALDO"].astype("string").str.strip() != "")
+    ].copy()
+    if len(mext):
+        mext["_K"] = (mext["NO_DAMA"].astype("string").str.strip()
+                      + _ultimos2_campania(mext["CAMPANA_SALDO"]))
+        base_keys = set((tmp["NO_DAMA"].astype("string").str.strip()
+                         + _ultimos2_campania(tmp["CAMPANA_SALDO"])).dropna())
+        extras = (mext[~mext["_K"].isin(base_keys)]
+                  .drop_duplicates(subset=["_K"], keep="first"))
+        if len(extras):
+            ex = pd.DataFrame({
+                "NO_DAMA": extras["NO_DAMA"].astype("string").str.strip().to_numpy(),
+                "ZONA": extras["ZONA"].to_numpy(),
+                "CAMPANA_SALDO": extras["CAMPANA_SALDO"].astype("string").str.strip().to_numpy(),
+            })
+            for c in cols_principal:
+                if c not in ex.columns:
+                    ex[c] = pd.NA
+            ex["FECHA_CARGA"] = pd.Timestamp(fecha_proceso)
+            ex["CARTERA_MORAS"] = "NUEVA"
+            tmp = pd.concat([tmp, ex[cols_principal + ["CARTERA_MORAS"]]], ignore_index=True)
+            for c in ("FECHA_FACTURA", "FECHA_INICIAL_VIGENCIA", "FECHA_FINAL_VIGENCIA", "FECHA_CARGA"):
+                tmp[c] = pd.to_datetime(tmp[c], errors="coerce")
+            for c in ("SALDO_DAMA", "PAGOS_DAMA"):
+                tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
+
     # ---- PASO 2: CLIENTES ----
     cli = src["CLIENTES"].drop_duplicates(subset=["NO_DAMA"], keep="first")
     df = tmp.merge(cli, on="NO_DAMA", how="left", suffixes=("", "_CLI"))
@@ -248,7 +288,7 @@ def construir_base_maestra(
                 .round(2))
     # Pagos = Deuda - max(Saldo, 0): cuando hay sobrepago el excedente NO se considera
     # (cuenta liquidada -> el pago registrado es la deuda que se debia).
-    df["PAGOS_DAMA"] = (deuda - saldo_op).where(cruza, pagos_cartera).round(2)
+    df["PAGOS_DAMA"] = (deuda - saldo_op).clip(lower=0).where(cruza, pagos_cartera).round(2)
     df["SALDO_ACTUALIZADO"] = saldo_op
     df.drop(columns=["_KEY", "_S"], inplace=True)
 
@@ -310,12 +350,14 @@ def construir_base_maestra(
     auditoria = (pd.concat(aud_dfs, ignore_index=True)[cols_aud]
                  if aud_dfs else pd.DataFrame(columns=cols_aud))
 
+    reg_nuevos_moras = int((base["CARTERA_MORAS"] == "NUEVA").sum())
     bitacora = {
         "PROCESO": "BASE_MAESTRA_COBRANZA",
         "FECHA_EJECUCION": pd.Timestamp(fecha_proceso).strftime("%Y-%m-%d %H:%M:%S"),
         "ESTATUS": "EXITO",
         "REG_PROCESADOS": reg_procesados,
         "REG_CONSOLIDADOS": len(base),
+        "REG_NUEVOS_MORAS": reg_nuevos_moras,
         "REG_CON_ERROR": len(auditoria),
     }
 

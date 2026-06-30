@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.30-h · FECHA_ULTIMA_LLAMADA (guiones / cualquier posición)"
+VERSION = "2026.06.30-i · incorpora cuentas de Cartera Moras (NUEVA)"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -222,11 +222,12 @@ bit = resultado.bitacora
 # --------------------------------------------------------------------------
 # Bitacora / metricas
 # --------------------------------------------------------------------------
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Registros procesados", bit["REG_PROCESADOS"])
 c2.metric("Consolidados", bit["REG_CONSOLIDADOS"])
-c3.metric("Con incidencia", bit["REG_CON_ERROR"])
-c4.metric("Fecha ejecución", bit["FECHA_EJECUCION"].split(" ")[0])
+c3.metric("Nuevos (Moras)", bit.get("REG_NUEVOS_MORAS", 0))
+c4.metric("Con incidencia", bit["REG_CON_ERROR"])
+c5.metric("Fecha ejecución", bit["FECHA_EJECUCION"].split(" ")[0])
 
 st.divider()
 
@@ -288,8 +289,11 @@ with tab_ind:
 # TAB: Validaciones / auditoria
 # --------------------------------------------------------------------------
 with tab_val:
-    dup = base["NO_DAMA"].is_unique
-    st.metric("NO_DAMA único (sin duplicados)", "✅ Sí" if dup else "❌ No")
+    unico = not base.duplicated(subset=["NO_DAMA", "CAMPANA_SALDO"]).any()
+    cu1, cu2 = st.columns(2)
+    cu1.metric("NO_DAMA + Campaña único", "✅ Sí" if unico else "❌ No")
+    cu2.metric("Incorporados desde Moras (NUEVA)",
+               int((base["CARTERA_MORAS"] == "NUEVA").sum()))
 
     if auditoria.empty:
         st.success("Sin incidencias registradas.")
