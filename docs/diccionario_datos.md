@@ -12,7 +12,10 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `NO_DAMA` | varchar(20) | CARTERA_INACTIVAS (1) | **Llave principal** |
 | `DIGITO_DAMA` | varchar(5) | CLIENTES (2) | Dígito verificador |
 | `NOMBRE_COMPLETO` | varchar(255) | CLIENTES (2) | `NOMBRE + APELLIDO_PATERNO + APELLIDO_MATERNO` |
-| `DIRECCION_COMPLETA` | varchar(300) | CLIENTES (2) | `CALLE + NUMERO_EXTERIOR + NUMERO_INTERIOR` |
+| `CALLE` | varchar(120) | CLIENTES (2) / CARTERA_MORA | Calle (se completa desde Moras si falta) |
+| `NUMERO_EXTERIOR` | varchar(20) | CLIENTES (2) / CARTERA_MORA | Número exterior |
+| `NUMERO_INTERIOR` | varchar(20) | CLIENTES (2) / CARTERA_MORA | Número interior |
+| `DIRECCION_COMPLETA` | varchar(300) | CLIENTES (2) / CARTERA_MORA | `CALLE + NUMERO_EXTERIOR + NUMERO_INTERIOR`; si falta, domicilio de Moras |
 | `COLONIA` | varchar(120) | CLIENTES (2) | Colonia |
 | `CODIGO_POSTAL` | varchar(10) | CLIENTES (2) | Código postal |
 | `POBLACION` | varchar(120) | CLIENTES (2) | Población |
@@ -39,7 +42,7 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `MOTIVO_NO_COBRO` | varchar(120) | LAYOUT_ARABELA (5) | Motivo de no cobro |
 | `DICTAMINACION` | varchar(120) | LAYOUT_ARABELA (5) | Dictaminación (Tipificación) |
 | `COMENTARIO` | varchar(255) | LAYOUT_ARABELA (5) | Comentario de la última gestión (íntegro) |
-| `FECHA_ULTIMA_LLAMADA` | varchar(10) | Calculado (5) | Fecha entre paréntesis al inicio de `COMENTARIO` (DD/MM/YYYY); vacía si no hay |
+| `FECHA_ULTIMA_LLAMADA` | varchar(10) | Calculado (5) | Gestión **más reciente** de la consultora (máx. fecha entre todas sus gestiones), DD/MM/YYYY |
 | `NUMERO_GESTIONES` | int | LAYOUT_ARABELA (5) | Conteo de gestiones por `NO_DAMA` |
 | `FECHA_PROMESA` | date | LAYOUT_ARABELA (5) | Fecha de promesa de pago |
 | `PRIMERA_ORDEN` | varchar(40) | CARTERA_MORA (4) | Primera orden |
