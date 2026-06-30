@@ -28,7 +28,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.30-j · incorpora Cartera Moras (NUEVA) · robusto a caché"
+VERSION = "2026.06.30-k · LLAVE_DAMA_CAMPAÑA · incorpora Cartera Moras (NUEVA)"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",

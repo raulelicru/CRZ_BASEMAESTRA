@@ -38,7 +38,7 @@ COLUMNAS_FINALES = [
     "FECHA_ULTIMA_LLAMADA", "NUMERO_GESTIONES", "FECHA_PROMESA",
     "PRIMERA_ORDEN", "REACTIVACION", "CANCELACION",
     "PRECIERRE", "PRECIERRE_1", "PRECIERRE_2", "GEOLOCALIZACION",
-    "CARTERA_MORAS",
+    "LLAVE_DAMA_CAMPAÑA", "CARTERA_MORAS",
     "FECHA_CARGA", "FECHA_ACTUALIZACION",
 ]
 
@@ -114,9 +114,15 @@ COLUMNAS_FECHA = [
 
 
 def _ultimos2_campania(serie: pd.Series) -> pd.Series:
-    """Ultimos 2 digitos de la campania (p.ej. '202526' -> '26')."""
+    """Ultimos 2 digitos de la campania (p.ej. '202526' -> '26', '9' -> '9')."""
     solo_digitos = serie.astype("string").str.replace(r"\D", "", regex=True)
     return solo_digitos.str[-2:].fillna("")
+
+
+def _llave_dama_campania(no_dama: pd.Series, campania: pd.Series) -> pd.Series:
+    """LLAVE_DAMA_CAMPAÑA = No.Dama + '-' + ultimos 2 digitos de la campania."""
+    dama = no_dama.astype("string").str.strip()
+    return dama + "-" + _ultimos2_campania(campania)
 
 
 def _fmt_fecha(serie: pd.Series) -> pd.Series:
@@ -208,10 +214,8 @@ def construir_base_maestra(
         & (mext["CAMPANA_SALDO"].astype("string").str.strip() != "")
     ].copy()
     if len(mext):
-        mext["_K"] = (mext["NO_DAMA"].astype("string").str.strip()
-                      + _ultimos2_campania(mext["CAMPANA_SALDO"]))
-        base_keys = set((tmp["NO_DAMA"].astype("string").str.strip()
-                         + _ultimos2_campania(tmp["CAMPANA_SALDO"])).dropna())
+        mext["_K"] = _llave_dama_campania(mext["NO_DAMA"], mext["CAMPANA_SALDO"])
+        base_keys = set(_llave_dama_campania(tmp["NO_DAMA"], tmp["CAMPANA_SALDO"]).dropna())
         extras = (mext[~mext["_K"].isin(base_keys)]
                   .drop_duplicates(subset=["_K"], keep="first"))
         if len(extras):
@@ -300,6 +304,9 @@ def construir_base_maestra(
     df["PRECIERRE"] = p2.fillna(p1)
 
     df["FECHA_ACTUALIZACION"] = pd.Timestamp(fecha_proceso)
+
+    # LLAVE_DAMA_CAMPAÑA (auxiliar para validaciones/cruces; no es la llave principal)
+    df["LLAVE_DAMA_CAMPAÑA"] = _llave_dama_campania(df["NO_DAMA"], df["CAMPANA_SALDO"])
 
     # FECHA_ULTIMA_LLAMADA: primera fecha entre parentesis del COMENTARIO.
     # Acepta separadores '/', '-' o '.' (p.ej. "(25-6-2026)") y la fecha puede
