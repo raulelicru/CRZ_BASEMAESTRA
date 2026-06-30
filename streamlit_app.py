@@ -20,7 +20,9 @@ from src.io_fuentes import (
     ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS, COLUMNAS_CLAVE, leer_archivo, leer_ruta,
     campos_mapeables, aplicar_mapeo, sugerir_mapeo,
 )
-from src.consolidacion import construir_base_maestra, TEMPORALIDADES
+from src.consolidacion import (
+    construir_base_maestra, TEMPORALIDADES, agregar_llave_dama_campania,
+)
 
 SIN_MAPEO = "— (ninguna) —"
 
@@ -28,7 +30,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.30-k · LLAVE_DAMA_CAMPAÑA · incorpora Cartera Moras (NUEVA)"
+VERSION = "2026.06.30-l · LLAVE_DAMA_CAMPAÑA en Base y Cartera Moras"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -341,6 +343,17 @@ with tab_desc:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
     )
+
+    # Cartera de Moras con la misma LLAVE_DAMA_CAMPAÑA (mismo nombre y formato).
+    mora_src = fuentes.get("CARTERA_MORA")
+    if mora_src is not None and len(mora_src):
+        mora_llave = agregar_llave_dama_campania(mora_src)
+        st.download_button(
+            "⬇️ Cartera de Moras + LLAVE_DAMA_CAMPAÑA (CSV)",
+            data=mora_llave.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"CARTERA_MORAS_LLAVE_{stamp}.csv",
+            mime="text/csv", width="stretch",
+        )
 
     st.caption("El CSV usa codificación UTF-8 con BOM para abrir correctamente "
                "los acentos en Excel / Power BI.")

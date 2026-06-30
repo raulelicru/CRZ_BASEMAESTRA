@@ -125,6 +125,20 @@ def _llave_dama_campania(no_dama: pd.Series, campania: pd.Series) -> pd.Series:
     return dama + "-" + _ultimos2_campania(campania)
 
 
+def agregar_llave_dama_campania(df: pd.DataFrame) -> pd.DataFrame:
+    """Devuelve una copia del df con la columna LLAVE_DAMA_CAMPAÑA.
+
+    Mismo nombre y formato que en la Base Maestra, para cruces directos contra
+    la Cartera de Moras u otras bases.
+    """
+    out = df.copy()
+    if "NO_DAMA" in out.columns and "CAMPANA_SALDO" in out.columns:
+        out["LLAVE_DAMA_CAMPAÑA"] = _llave_dama_campania(out["NO_DAMA"], out["CAMPANA_SALDO"])
+    else:
+        out["LLAVE_DAMA_CAMPAÑA"] = pd.NA
+    return out
+
+
 def _fmt_fecha(serie: pd.Series) -> pd.Series:
     """Convierte a texto DD/MM/YYYY (sin hora); vacios quedan como NA."""
     fechas = pd.to_datetime(serie, errors="coerce")
