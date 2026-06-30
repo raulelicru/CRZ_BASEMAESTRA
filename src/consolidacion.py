@@ -26,6 +26,7 @@ from .io_fuentes import ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS
 COLUMNAS_FINALES = [
     "REGION", "DIVISION", "ZONA", "RUTA", "ID_COBRADOR",
     "NO_DAMA", "DIGITO_DAMA", "NOMBRE_COMPLETO",
+    "CALLE", "NUMERO_EXTERIOR", "NUMERO_INTERIOR",
     "DIRECCION_COMPLETA", "COLONIA", "CODIGO_POSTAL", "POBLACION", "ESTADO",
     "TELEFONO_CASA", "TELEFONO_CELULAR",
     "CAMPANA_SALDO", "FECHA_FACTURA", "FECHA_INICIAL_VIGENCIA",
@@ -119,6 +120,48 @@ def _ultimos2_campania(serie: pd.Series) -> pd.Series:
     return solo_digitos.str[-2:].fillna("")
 
 
+def _norm_txt(serie: pd.Series) -> pd.Series:
+    """Texto limpio; cadenas vacias -> NA."""
+    s = serie.astype("string")
+    return s.where(s.notna() & (s.str.strip() != ""), pd.NA)
+
+
+def _parse_direccion(serie: pd.Series) -> dict[str, pd.Series]:
+    """Separa, en lo posible, un domicilio de texto libre en componentes.
+
+    Heuristica (best-effort) para domicilios tipo "CALLE 123 INT 4, COLONIA,
+    CP CIUDAD, ESTADO". Lo que no se reconoce queda vacio.
+    """
+    s = serie.astype("string").fillna("")
+    partes = s.str.split(",")
+    seg0 = partes.str[0].fillna("").str.strip()
+    seg1 = partes.str[1].fillna("")
+    seg2 = partes.str[2].fillna("")
+    seg3 = partes.str[3].fillna("")
+
+    cp = s.str.extract(r"\b(\d{5})\b")[0]
+    numint = s.str.extract(
+        r"(?i)(?:int\.?|interior|depto\.?|departamento)\s*[:#\-]?\s*([0-9a-z]+)")[0]
+    # quitar la parte de interior del primer segmento antes de buscar el exterior
+    seg0_ne = seg0.str.replace(
+        r"(?i)(?:int\.?|interior|depto\.?|departamento)\s*[:#\-]?\s*[0-9a-z]+", "", regex=True)
+    numext = seg0_ne.str.extract(r"(?:no\.?|num\.?|#)?\s*(\d+)\s*$")[0]
+    calle = seg0_ne.str.replace(r"(?:no\.?|num\.?|#)?\s*\d+\s*$", "", regex=True,
+                                ).str.replace(r"(?i)^(calle|c\.)\s*", "", regex=True).str.strip()
+
+    quita_cp = lambda x: x.str.replace(r"\b\d{5}\b", "", regex=True).str.strip()
+    colonia = quita_cp(seg1).str.replace(r"(?i)^col(onia)?\.?\s*", "", regex=True).str.strip()
+    poblacion = quita_cp(seg2)
+    estado = quita_cp(seg3)
+
+    return {
+        "CALLE": _norm_txt(calle), "NUMERO_EXTERIOR": _norm_txt(numext),
+        "NUMERO_INTERIOR": _norm_txt(numint), "COLONIA": _norm_txt(colonia),
+        "CODIGO_POSTAL": _norm_txt(cp), "POBLACION": _norm_txt(poblacion),
+        "ESTADO": _norm_txt(estado),
+    }
+
+
 def _llave_dama_campania(no_dama: pd.Series, campania: pd.Series) -> pd.Series:
     """LLAVE_DAMA_CAMPAÑA = No.Dama + '-' + ultimos 2 digitos de la campania."""
     dama = no_dama.astype("string").str.strip()
@@ -144,6 +187,17 @@ def _fmt_fecha(serie: pd.Series) -> pd.Series:
     fechas = pd.to_datetime(serie, errors="coerce")
     out = fechas.dt.strftime("%d/%m/%Y")
     return out.where(fechas.notna(), pd.NA)
+
+
+def _fecha_parentesis(serie: pd.Series) -> pd.Series:
+    """Fecha (datetime) contenida entre parentesis en el texto; acepta - / .
+
+    p.ej. "5556206818 (25-6-2026) NO CONTESTAN" -> 2026-06-25.
+    """
+    raw = (serie.astype("string")
+           .str.extract(r"\(\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\s*\)")[0])
+    norm = raw.str.replace(r"[-.]", "/", regex=True)
+    return pd.to_datetime(norm, dayfirst=True, errors="coerce")
 
 
 def construir_base_maestra(
@@ -263,16 +317,57 @@ def construir_base_maestra(
     mora = src["CARTERA_MORA"].drop_duplicates(subset=["NO_DAMA"], keep="first")
     df = df.merge(mora, on="NO_DAMA", how="left", suffixes=("", "_MORA"))
 
+    # ---- Completar datos faltantes de la consultora con la Cartera de Moras ----
+    # Si un dato viene vacio de CLIENTES y existe en Moras, se usa el de Moras.
+    # El domicilio unico de Moras se separa en componentes (best-effort).
+    comp = _parse_direccion(df["DOMICILIO"]) if "DOMICILIO" in df.columns else {}
+
+    def _completar(destino, *fuentes):
+        base_s = _norm_txt(df[destino]) if destino in df.columns else \
+            pd.Series(pd.NA, index=df.index, dtype="string")
+        for f in fuentes:
+            if f is None:
+                continue
+            base_s = base_s.fillna(_norm_txt(f))
+        df[destino] = base_s
+
+    _completar("CALLE", comp.get("CALLE"))
+    _completar("NUMERO_EXTERIOR", comp.get("NUMERO_EXTERIOR"))
+    _completar("NUMERO_INTERIOR", comp.get("NUMERO_INTERIOR"))
+    _completar("COLONIA", df.get("COLONIA_MORA"), comp.get("COLONIA"))
+    _completar("CODIGO_POSTAL", df.get("CODIGO_POSTAL_MORA"), comp.get("CODIGO_POSTAL"))
+    _completar("POBLACION", df.get("POBLACION_MORA"), comp.get("POBLACION"))
+    _completar("ESTADO", df.get("ESTADO_MORA"), comp.get("ESTADO"))
+    _completar("TELEFONO_CASA", df.get("TELEFONO_CASA_MORA"))
+    _completar("TELEFONO_CELULAR", df.get("TELEFONO_CELULAR_MORA"))
+
+    # Recalcular DIRECCION_COMPLETA con la calle/numeros ya completados; si sigue
+    # vacia y hay domicilio de Moras, usar el texto completo.
+    df["DIRECCION_COMPLETA"] = _concat_ws(df, ["CALLE", "NUMERO_EXTERIOR", "NUMERO_INTERIOR"])
+    if "DOMICILIO" in df.columns:
+        dc = _norm_txt(df["DIRECCION_COMPLETA"])
+        df["DIRECCION_COMPLETA"] = dc.fillna(_norm_txt(df["DOMICILIO"]))
+
     # ---- PASO 5: LAYOUT_ARABELA (ultima gestion + NUMERO_GESTIONES) ----
     ara = src["LAYOUT_ARABELA"].copy()
     ara["FECHA_GESTION"] = pd.to_datetime(ara["FECHA_GESTION"], errors="coerce")
+    # Fecha de la llamada por registro: la fecha entre parentesis del comentario;
+    # si no hay, se usa FECHA_GESTION. FECHA_ULTIMA_LLAMADA sera la MAS RECIENTE.
+    if "COMENTARIO" in ara.columns:
+        ara["_FLLAM"] = _fecha_parentesis(ara["COMENTARIO"]).fillna(ara["FECHA_GESTION"])
+    else:
+        ara["_FLLAM"] = ara["FECHA_GESTION"]
     conteo = ara.groupby("NO_DAMA").size().rename("NUMERO_GESTIONES").reset_index()
-    ult = (ara.sort_values(["NO_DAMA", "FECHA_GESTION"], ascending=[True, False], na_position="last")
+    fmax = (ara.groupby("NO_DAMA")["_FLLAM"].max()
+               .rename("_FECHA_ULT").reset_index())
+    # "Ultima gestion" (status/comentario/etc.) = registro con la llamada mas reciente.
+    ult = (ara.sort_values(["NO_DAMA", "_FLLAM"], ascending=[True, False], na_position="last")
               .drop_duplicates(subset=["NO_DAMA"], keep="first"))
     cols_ult = ["NO_DAMA", "STATUS_GESTION", "MOTIVO_NO_COBRO", "DICTAMINACION",
                 "COMENTARIO", "FECHA_PROMESA"]
     df = df.merge(ult[cols_ult], on="NO_DAMA", how="left", suffixes=("", "_ARA"))
     df = df.merge(conteo, on="NO_DAMA", how="left")
+    df = df.merge(fmax, on="NO_DAMA", how="left")
     df["NUMERO_GESTIONES"] = df["NUMERO_GESTIONES"].fillna(0).astype(int)
     df["FECHA_PROMESA"] = pd.to_datetime(df["FECHA_PROMESA"], errors="coerce")
 
@@ -322,15 +417,11 @@ def construir_base_maestra(
     # LLAVE_DAMA_CAMPAÑA (auxiliar para validaciones/cruces; no es la llave principal)
     df["LLAVE_DAMA_CAMPAÑA"] = _llave_dama_campania(df["NO_DAMA"], df["CAMPANA_SALDO"])
 
-    # FECHA_ULTIMA_LLAMADA: primera fecha entre parentesis del COMENTARIO.
-    # Acepta separadores '/', '-' o '.' (p.ej. "(25-6-2026)") y la fecha puede
-    # ir en cualquier parte del texto. El COMENTARIO original NO se modifica.
-    if "COMENTARIO" in df.columns:
-        fecha_raw = (df["COMENTARIO"].astype("string")
-                     .str.extract(r"\(\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\s*\)")[0])
-        fecha_norm = fecha_raw.str.replace(r"[-.]", "/", regex=True)
-        fll = pd.to_datetime(fecha_norm, dayfirst=True, errors="coerce")
-        df["FECHA_ULTIMA_LLAMADA"] = fll.dt.strftime("%d/%m/%Y").where(fll.notna(), pd.NA)
+    # FECHA_ULTIMA_LLAMADA: la gestion MAS RECIENTE de cada consultora (DD/MM/YYYY).
+    # Se calculo en PASO 5 como el maximo de las fechas de llamada por NO_DAMA.
+    if "_FECHA_ULT" in df.columns:
+        df["FECHA_ULTIMA_LLAMADA"] = _fmt_fecha(df["_FECHA_ULT"])
+        df.drop(columns=["_FECHA_ULT"], inplace=True)
     else:
         df["FECHA_ULTIMA_LLAMADA"] = pd.NA
 
