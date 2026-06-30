@@ -18,8 +18,8 @@ Llave principal: **`NO_DAMA`** (único). Una fila por cliente/cuenta.
 | `DIRECCION_COMPLETA` | varchar(300) | CLIENTES (2) / CARTERA_MORA | `CALLE + NUMERO_EXTERIOR + NUMERO_INTERIOR`; si falta, domicilio de Moras |
 | `COLONIA` | varchar(120) | CLIENTES (2) | Colonia |
 | `CODIGO_POSTAL` | varchar(10) | CLIENTES (2) | Código postal |
-| `POBLACION` | varchar(120) | CLIENTES (2) | Población |
-| `ESTADO` | varchar(60) | CLIENTES (2) | Estado |
+| `POBLACION` | varchar(120) | CLIENTES / CP | Población/municipio (se deduce del CP si falta) |
+| `ESTADO` | varchar(60) | CLIENTES / CP | Estado (se deduce del CP si falta) |
 | `TELEFONO_CASA` | varchar(20) | CLIENTES (2) | Teléfono fijo |
 | `TELEFONO_CELULAR` | varchar(20) | CLIENTES (2) | Teléfono celular |
 | `CAMPANA_SALDO` | varchar(20) | CARTERA_INACTIVAS (1) | Campaña de saldo (*CAMPAÑA_SALDO*) |

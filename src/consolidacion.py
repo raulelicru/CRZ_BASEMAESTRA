@@ -16,11 +16,36 @@ Validaciones: NO_DAMA duplicado, zona sin cobrador, saldo negativo.
 """
 from __future__ import annotations
 
+import functools
+import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
 import pandas as pd
 
 from .io_fuentes import ESQUEMA_FUENTES, FUENTES_OBLIGATORIAS
+
+_RUTA_CP = pathlib.Path(__file__).resolve().parent.parent / "data" / "cp_municipio_estado.csv"
+
+
+@functools.lru_cache(maxsize=1)
+def _catalogo_cp() -> pd.DataFrame | None:
+    """Catalogo CP -> (POBLACION/municipio, ESTADO). Se carga una sola vez."""
+    if not _RUTA_CP.exists():
+        return None
+    d = pd.read_csv(_RUTA_CP, dtype=str)
+    d["CODIGO_POSTAL"] = d["CODIGO_POSTAL"].str.strip().str.zfill(5)
+    return d.drop_duplicates(subset=["CODIGO_POSTAL"]).set_index("CODIGO_POSTAL")
+
+
+def _deducir_pob_estado(cp_serie: pd.Series):
+    """Deduce (POBLACION, ESTADO) a partir del codigo postal."""
+    cat = _catalogo_cp()
+    cp = cp_serie.astype("string").str.replace(r"\D", "", regex=True)
+    cp = cp.where(cp.str.len().fillna(0) >= 5, pd.NA).str[-5:]
+    if cat is None:
+        vacia = pd.Series(pd.NA, index=cp_serie.index, dtype="string")
+        return vacia, vacia
+    return cp.map(cat["POBLACION"]), cp.map(cat["ESTADO"])
 
 # Orden final de columnas (ESTRUCTURA FINAL de la especificacion).
 COLUMNAS_FINALES = [
@@ -352,6 +377,13 @@ def construir_base_maestra(
     if "DOMICILIO" in df.columns:
         dc = _norm_txt(df["DIRECCION_COMPLETA"])
         df["DIRECCION_COMPLETA"] = dc.fillna(_norm_txt(df["DOMICILIO"]))
+
+    # Deducir POBLACION (municipio) y ESTADO por codigo postal cuando falten.
+    pob_cp, est_cp = _deducir_pob_estado(df["CODIGO_POSTAL"]) if "CODIGO_POSTAL" in df.columns \
+        else (None, None)
+    if pob_cp is not None:
+        df["POBLACION"] = _norm_txt(df.get("POBLACION", pd.Series(pd.NA, index=df.index))).fillna(_norm_txt(pob_cp))
+        df["ESTADO"] = _norm_txt(df.get("ESTADO", pd.Series(pd.NA, index=df.index))).fillna(_norm_txt(est_cp))
 
     # ---- PASO 5: LAYOUT_ARABELA (ultima gestion + NUMERO_GESTIONES) ----
     ara = src["LAYOUT_ARABELA"].copy()
