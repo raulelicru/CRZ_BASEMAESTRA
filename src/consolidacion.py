@@ -127,38 +127,43 @@ def _norm_txt(serie: pd.Series) -> pd.Series:
 
 
 def _parse_direccion(serie: pd.Series) -> dict[str, pd.Series]:
-    """Separa, en lo posible, un domicilio de texto libre en componentes.
+    """Separa un domicilio de texto libre en componentes (best-effort).
 
-    Heuristica (best-effort) para domicilios tipo "CALLE 123 INT 4, COLONIA,
-    CP CIUDAD, ESTADO". Lo que no se reconoce queda vacio.
+    Formato objetivo (Cartera de Moras):
+        <CALLE> No <NUM_EXT> [Int <NUM_INT>] <ASENTAMIENTO/COLONIA> CP <CP>
+    p.ej. "CERESOS SUR No 25 Int c FRACCIONAMIENTO GALAXIA BONITO ... CP 45680".
+    Lo que no se reconoce queda vacio (no se pierde el texto: ver DIRECCION).
     """
-    s = serie.astype("string").fillna("")
-    partes = s.str.split(",")
-    seg0 = partes.str[0].fillna("").str.strip()
-    seg1 = partes.str[1].fillna("")
-    seg2 = partes.str[2].fillna("")
-    seg3 = partes.str[3].fillna("")
+    s = serie.astype("string").fillna("").str.strip()
 
-    cp = s.str.extract(r"\b(\d{5})\b")[0]
-    numint = s.str.extract(
-        r"(?i)(?:int\.?|interior|depto\.?|departamento)\s*[:#\-]?\s*([0-9a-z]+)")[0]
-    # quitar la parte de interior del primer segmento antes de buscar el exterior
-    seg0_ne = seg0.str.replace(
-        r"(?i)(?:int\.?|interior|depto\.?|departamento)\s*[:#\-]?\s*[0-9a-z]+", "", regex=True)
-    numext = seg0_ne.str.extract(r"(?:no\.?|num\.?|#)?\s*(\d+)\s*$")[0]
-    calle = seg0_ne.str.replace(r"(?:no\.?|num\.?|#)?\s*\d+\s*$", "", regex=True,
-                                ).str.replace(r"(?i)^(calle|c\.)\s*", "", regex=True).str.strip()
+    # Codigo postal: tras "CP" o, en su defecto, ultimos 5 digitos.
+    cp = s.str.extract(r"(?i)\bC\.?\s*P\.?\s*(\d{5})\b")[0]
+    cp = cp.fillna(s.str.extract(r"\b(\d{5})\b")[0])
 
-    quita_cp = lambda x: x.str.replace(r"\b\d{5}\b", "", regex=True).str.strip()
-    colonia = quita_cp(seg1).str.replace(r"(?i)^col(onia)?\.?\s*", "", regex=True).str.strip()
-    poblacion = quita_cp(seg2)
-    estado = quita_cp(seg3)
+    # Numero exterior (token tras "No" que inicia con digito) e interior (tras "Int").
+    numext = s.str.extract(r"(?i)\bNo\.?\s+(\d\S*)")[0]
+    numint = s.str.extract(r"(?i)\bInt\.?\s+(\S+)")[0]
 
+    # Calle: todo antes de " No <digito>".
+    calle = s.str.extract(r"(?i)^(.*?)\s+No\.?\s+\d")[0].str.strip()
+    # Si no hay "No", la calle es el texto sin la parte de CP.
+    sin_cp = (s.str.replace(r"(?i)\bC\.?\s*P\.?\s*\d{5}.*$", "", regex=True)
+               .str.replace(r"\b\d{5}\b.*$", "", regex=True).str.strip())
+    sin_no = ~s.str.contains(r"(?i)\bNo\.?\s+\d", regex=True, na=False)
+    calle = calle.where(~sin_no, sin_cp)
+
+    # Colonia / asentamiento: entre el numero y el CP, sin "Int x".
+    resto = s.str.replace(r"(?i)^.*?\bNo\.?\s+\d\S*\s*", "", regex=True)
+    resto = resto.str.replace(r"(?i)\bInt\.?\s+\S+\s*", "", regex=True)
+    resto = resto.str.replace(r"(?i)\bC\.?\s*P\.?\s*\d{5}.*$", "", regex=True)
+    resto = resto.str.replace(r"\b\d{5}\b.*$", "", regex=True).str.strip()
+    colonia = resto.where(~sin_no, pd.NA)
+
+    vacia = pd.Series(pd.NA, index=s.index, dtype="string")
     return {
         "CALLE": _norm_txt(calle), "NUMERO_EXTERIOR": _norm_txt(numext),
         "NUMERO_INTERIOR": _norm_txt(numint), "COLONIA": _norm_txt(colonia),
-        "CODIGO_POSTAL": _norm_txt(cp), "POBLACION": _norm_txt(poblacion),
-        "ESTADO": _norm_txt(estado),
+        "CODIGO_POSTAL": _norm_txt(cp), "POBLACION": vacia, "ESTADO": vacia,
     }
 
 
