@@ -261,12 +261,14 @@ def construir_base_maestra(
 
     df["FECHA_ACTUALIZACION"] = pd.Timestamp(fecha_proceso)
 
-    # FECHA_ULTIMA_LLAMADA: fecha entre parentesis al INICIO del COMENTARIO.
-    # El COMENTARIO original NO se modifica; solo se copia la fecha (DD/MM/YYYY).
+    # FECHA_ULTIMA_LLAMADA: primera fecha entre parentesis del COMENTARIO.
+    # Acepta separadores '/', '-' o '.' (p.ej. "(25-6-2026)") y la fecha puede
+    # ir en cualquier parte del texto. El COMENTARIO original NO se modifica.
     if "COMENTARIO" in df.columns:
-        fecha_txt = (df["COMENTARIO"].astype("string")
-                     .str.extract(r"^\s*\(\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*\)")[0])
-        fll = pd.to_datetime(fecha_txt, dayfirst=True, errors="coerce")
+        fecha_raw = (df["COMENTARIO"].astype("string")
+                     .str.extract(r"\(\s*(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})\s*\)")[0])
+        fecha_norm = fecha_raw.str.replace(r"[-.]", "/", regex=True)
+        fll = pd.to_datetime(fecha_norm, dayfirst=True, errors="coerce")
         df["FECHA_ULTIMA_LLAMADA"] = fll.dt.strftime("%d/%m/%Y").where(fll.notna(), pd.NA)
     else:
         df["FECHA_ULTIMA_LLAMADA"] = pd.NA
