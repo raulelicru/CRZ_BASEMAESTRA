@@ -30,7 +30,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.06.30-o · Población/Estado deducidos por CP (catálogo SEPOMEX)"
+VERSION = "2026.07.01-p · excluye vigencia vencida (Mora 1 sin pago se conserva)"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -298,10 +298,11 @@ with tab_ind:
 # --------------------------------------------------------------------------
 with tab_val:
     unico = not base.duplicated(subset=["NO_DAMA", "CAMPANA_SALDO"]).any()
-    cu1, cu2 = st.columns(2)
+    cu1, cu2, cu3 = st.columns(3)
     cu1.metric("NO_DAMA + Campaña único", "✅ Sí" if unico else "❌ No")
     cu2.metric("Incorporados desde Moras (NUEVA)",
                int((base["CARTERA_MORAS"] == "NUEVA").sum()))
+    cu3.metric("Excluidos por vigencia vencida", bit.get("REG_EXCLUIDOS_VIGENCIA", 0))
 
     if auditoria.empty:
         st.success("Sin incidencias registradas.")
