@@ -549,6 +549,21 @@ def construir_base_maestra(
                  if aud_dfs else pd.DataFrame(columns=cols_aud))
 
     reg_nuevos_moras = int((base["CARTERA_MORAS"] == "NUEVA").sum())
+
+    # Cobertura de cruce: cuantos registros de la base cruzaron con cada fuente.
+    # Si CLIENTES ~ 0, la llave NO_DAMA no coincide entre archivos.
+    def _cob(col_base, col_src, fuente):
+        if col_base not in base.columns or col_src not in src[fuente].columns:
+            return 0
+        vals = set(src[fuente][col_src].dropna().astype("string"))
+        return int(base[col_base].astype("string").isin(vals).sum())
+    cobertura = {
+        "CLIENTES": _cob("NO_DAMA", "NO_DAMA", "CLIENTES"),
+        "ZONAS_ASIGNADAS": _cob("ZONA", "ZONA", "ZONAS_ASIGNADAS"),
+        "CARTERA_MORA": _cob("NO_DAMA", "NO_DAMA", "CARTERA_MORA"),
+        "LAYOUT_ARABELA": _cob("NO_DAMA", "NO_DAMA", "LAYOUT_ARABELA"),
+    }
+
     bitacora = {
         "PROCESO": "BASE_MAESTRA_COBRANZA",
         "FECHA_EJECUCION": pd.Timestamp(fecha_proceso).strftime("%Y-%m-%d %H:%M:%S"),
@@ -558,6 +573,7 @@ def construir_base_maestra(
         "REG_NUEVOS_MORAS": reg_nuevos_moras,
         "REG_EXCLUIDOS_VIGENCIA": reg_excluidos,
         "REG_CON_ERROR": len(auditoria),
+        "COBERTURA": cobertura,
     }
 
     return ResultadoConsolidacion(base=base, auditoria=auditoria,

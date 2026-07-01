@@ -92,13 +92,21 @@ def normalizar_columna(nombre: str) -> str:
     return base.replace("-", "_").replace(".", "")
 
 
+def limpiar_llave(serie: pd.Series) -> pd.Series:
+    """Normaliza una llave de cruce: texto, sin espacios y sin el '.0' que deja
+    Excel al leer numeros (p.ej. '1234567.0' -> '1234567'). Evita que NO_DAMA no
+    cruce entre archivos por diferencias de formato."""
+    s = serie.astype("string").str.strip()
+    return s.str.replace(r"\.0+$", "", regex=True)
+
+
 def normalizar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [normalizar_columna(c) for c in df.columns]
-    # NO_DAMA siempre como texto, sin espacios (es la llave de los joins).
+    # NO_DAMA / ZONA / CAMPANA son llaves de cruce: se sanean para que crucen.
     for col in ("NO_DAMA", "ZONA", "CAMPANA_SALDO"):
         if col in df.columns:
-            df[col] = df[col].astype("string").str.strip()
+            df[col] = limpiar_llave(df[col])
     return df
 
 
@@ -285,8 +293,8 @@ def aplicar_mapeo(df: pd.DataFrame, mapeo: dict[str, str | None]) -> pd.DataFram
         if canonico in df.columns:
             df = df.drop(columns=[canonico])
         df = df.rename(columns={columna: canonico})
-    # Normaliza tipos de las llaves recien mapeadas.
+    # Sanea las llaves recien mapeadas (sin espacios ni '.0' de Excel).
     for col in ("NO_DAMA", "ZONA", "CAMPANA_SALDO"):
         if col in df.columns:
-            df[col] = df[col].astype("string").str.strip()
+            df[col] = limpiar_llave(df[col])
     return df
