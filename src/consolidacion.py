@@ -440,6 +440,7 @@ def construir_base_maestra(
     # (cuenta liquidada -> el pago registrado es la deuda que se debia).
     df["PAGOS_DAMA"] = (deuda - saldo_op).clip(lower=0).where(cruza, pagos_cartera).round(2)
     df["SALDO_ACTUALIZADO"] = saldo_op
+    df["_SOBREPAGO"] = (cruza & (s_raw < 0)).fillna(False)  # persiste tras filtrar filas
     df.drop(columns=["_KEY", "_S"], inplace=True)
 
     # PRECIERRE = PRECIERRE_2 si existe, en su defecto PRECIERRE_1 (vectorizado)
@@ -462,6 +463,25 @@ def construir_base_maestra(
     else:
         df["FECHA_ULTIMA_LLAMADA"] = pd.NA
 
+    # ---- Depuracion: excluir cuentas con vigencia vencida (solo por fecha) ----
+    # Si FECHA_FINAL_VIGENCIA < hoy -> excluir. Excepcion: cuentas "Mora 1"
+    # vencidas SIN pago se conservan.
+    ffv = pd.to_datetime(df["FECHA_FINAL_VIGENCIA"], errors="coerce")
+    vencida = ffv.notna() & (ffv.dt.normalize() < fecha_dia)
+    pagos_num = pd.to_numeric(df["PAGOS_DAMA"], errors="coerce").fillna(0)
+    mora1_sin_pago = (df["TEMPORALIDAD"] == "Mora 1") & (pagos_num <= 0)
+    excluir = vencida & ~mora1_sin_pago
+    reg_excluidos = int(excluir.sum())
+    if reg_excluidos:
+        d = df.loc[excluir]
+        aud_dfs.append(pd.DataFrame({
+            "PASO": "DEPURACION", "MOTIVO": "VIGENCIA_VENCIDA", "NIVEL": "EXCLUIDO",
+            "NO_DAMA": d["NO_DAMA"].to_numpy(), "CAMPANA_SALDO": d["CAMPANA_SALDO"].to_numpy(),
+            "ZONA": d["ZONA"].to_numpy(),
+            "DETALLE": "FECHA_FINAL_VIGENCIA vencida; cuenta fuera de la cartera activa.",
+        }))
+        df = df.loc[~excluir].reset_index(drop=True)
+
     # ---- Validaciones de negocio (vectorizadas) ----
     mask_sc = df["ID_COBRADOR"].isna() | (df["ID_COBRADOR"].astype("string").str.strip() == "")
     if mask_sc.any():
@@ -474,7 +494,7 @@ def construir_base_maestra(
         }))
 
     # Sobrepago: el saldo original venia negativo (pago mayor al adeudo) -> liquidada.
-    mask_sp = cruza & (s_raw < 0)
+    mask_sp = df["_SOBREPAGO"]
     if mask_sp.any():
         d = df.loc[mask_sp]
         aud_dfs.append(pd.DataFrame({
@@ -507,6 +527,7 @@ def construir_base_maestra(
         "REG_PROCESADOS": reg_procesados,
         "REG_CONSOLIDADOS": len(base),
         "REG_NUEVOS_MORAS": reg_nuevos_moras,
+        "REG_EXCLUIDOS_VIGENCIA": reg_excluidos,
         "REG_CON_ERROR": len(auditoria),
     }
 
