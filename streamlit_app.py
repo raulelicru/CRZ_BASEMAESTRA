@@ -30,7 +30,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.07.01-p · excluye vigencia vencida (Mora 1 sin pago se conserva)"
+VERSION = "2026.07.01-q · CAMPANA_SALDO normalizada (AAAA+campaña) + diagnóstico"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -303,6 +303,36 @@ with tab_val:
     cu2.metric("Incorporados desde Moras (NUEVA)",
                int((base["CARTERA_MORAS"] == "NUEVA").sum()))
     cu3.metric("Excluidos por vigencia vencida", bit.get("REG_EXCLUIDOS_VIGENCIA", 0))
+
+    # Diagnóstico por campaña: ver si una campaña (p.ej. 202611) está en la base
+    # y, si no, dónde se quedó (excluida por vigencia o descartada por dedup).
+    with st.expander("🔎 Distribución por campaña (rastrear una campaña)"):
+        dist = (base.groupby("CAMPANA_SALDO").size().rename("EN_BASE")
+                    .reset_index().sort_values("CAMPANA_SALDO", ascending=False))
+        if not auditoria.empty:
+            aud_camp = (auditoria.groupby(["CAMPANA_SALDO", "MOTIVO"]).size()
+                                 .rename("TOTAL").reset_index())
+        else:
+            aud_camp = pd.DataFrame(columns=["CAMPANA_SALDO", "MOTIVO", "TOTAL"])
+        c1d, c2d = st.columns(2)
+        with c1d:
+            st.caption("Registros por campaña **en la Base Maestra**")
+            st.dataframe(dist, width="stretch", hide_index=True, height=280)
+        with c2d:
+            st.caption("Campañas en **auditoría** (excluidas / descartadas)")
+            st.dataframe(aud_camp, width="stretch", hide_index=True, height=280)
+        buscar = st.text_input("Buscar campaña (ej. 202611)")
+        if buscar:
+            en_base = int(dist.loc[dist["CAMPANA_SALDO"] == buscar, "EN_BASE"].sum())
+            en_aud = aud_camp[aud_camp["CAMPANA_SALDO"] == buscar]
+            st.write(f"**{buscar}** → en la base: **{en_base}** registro(s).")
+            if len(en_aud):
+                st.write("En auditoría:")
+                st.dataframe(en_aud, width="stretch", hide_index=True)
+            elif en_base == 0:
+                st.info("No aparece en la base ni en auditoría: no existe con ese "
+                        "formato en las fuentes, o su dama tiene una campaña más "
+                        "reciente (se conserva solo la más reciente por NO_DAMA).")
 
     if auditoria.empty:
         st.success("Sin incidencias registradas.")

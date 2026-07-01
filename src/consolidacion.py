@@ -192,6 +192,26 @@ def _parse_direccion(serie: pd.Series) -> dict[str, pd.Series]:
     }
 
 
+def _anio_ref_campania(serie: pd.Series, fallback: int) -> int:
+    """Año de referencia de la cartera: el mas reciente entre las campañas que ya
+    traen formato completo (>=5 digitos, AAAANN). Si no hay, usa `fallback`."""
+    d = serie.astype("string").str.replace(r"\D", "", regex=True)
+    full = d[d.str.len().fillna(0) >= 5]
+    years = pd.to_numeric(full.str[:-2], errors="coerce").dropna()
+    return int(years.max()) if len(years) else int(fallback)
+
+
+def _normalizar_campania(serie: pd.Series, anio_ref: int) -> pd.Series:
+    """Formato uniforme AAAA + campaña (2 digitos). p.ej. '9' -> '202609',
+    '202611' -> '202611'. Las que solo traen el numero reciben el año de referencia."""
+    d = serie.astype("string").str.replace(r"\D", "", regex=True)
+    d = d.where(d.str.len().fillna(0) > 0, pd.NA)
+    largo = d.str.len().fillna(0)
+    camp2 = d.str[-2:].str.zfill(2)
+    anio = d.str[:-2].where(largo >= 5, str(int(anio_ref)))
+    return (anio + camp2).where(d.notna(), pd.NA)
+
+
 def _llave_dama_campania(no_dama: pd.Series, campania: pd.Series) -> pd.Series:
     """LLAVE_DAMA_CAMPAÑA = No.Dama + '-' + ultimos 2 digitos de la campania."""
     dama = no_dama.astype("string").str.strip()
@@ -250,6 +270,15 @@ def construir_base_maestra(
         )
 
     src = {f: _asegurar_columnas(fuentes[f], f) for f in FUENTES_OBLIGATORIAS}
+
+    # ---- Normalizar CAMPANA_SALDO a formato uniforme AAAA+campaña ----
+    # El año de referencia se toma de las campañas de la cartera que ya vienen
+    # completas; las que solo traen el numero (p.ej. "9") reciben ese año.
+    anio_ref = _anio_ref_campania(src["CARTERA_INACTIVAS"]["CAMPANA_SALDO"], fecha_proceso.year)
+    for f in ("CARTERA_INACTIVAS", "SALDOS_ACTUALIZADOS", "CARTERA_MORA"):
+        if "CAMPANA_SALDO" in src[f].columns:
+            src[f] = src[f].copy()
+            src[f]["CAMPANA_SALDO"] = _normalizar_campania(src[f]["CAMPANA_SALDO"], anio_ref)
 
     cartera = src["CARTERA_INACTIVAS"].copy()
     cartera = cartera[cartera["NO_DAMA"].notna() & (cartera["NO_DAMA"].astype(str).str.strip() != "")]
