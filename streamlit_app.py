@@ -30,7 +30,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.07.01-r · CAMPANA_SALDO normalizada + diagnóstico (fix render)"
+VERSION = "2026.07.01-s · NO_DAMA saneado (.0) + cobertura de cruce por fuente"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
@@ -303,6 +303,19 @@ with tab_val:
     cu2.metric("Incorporados desde Moras (NUEVA)",
                int((base["CARTERA_MORAS"] == "NUEVA").sum()))
     cu3.metric("Excluidos por vigencia vencida", bit.get("REG_EXCLUIDOS_VIGENCIA", 0))
+
+    # Cobertura de cruce: si CLIENTES ~ 0, la llave NO_DAMA no coincide.
+    cob = bit.get("COBERTURA")
+    if cob:
+        total = max(len(base), 1)
+        st.subheader("🔗 Cobertura de cruce por fuente")
+        cob_df = pd.DataFrame(
+            [{"FUENTE": k, "CRUZARON": v, "% DE LA BASE": f"{100*v/total:,.1f}%"}
+             for k, v in cob.items()])
+        st.dataframe(cob_df, width="stretch", hide_index=True)
+        if cob.get("CLIENTES", 0) == 0:
+            st.error("⚠️ CLIENTES cruzó 0 registros: la llave **NO_DAMA** no coincide "
+                     "entre CARTERA y CLIENTES (revisa el formato/columna de NO_DAMA).")
 
     # Diagnóstico por campaña: rastrear una campaña (p.ej. 202611) en la base
     # y en auditoría (excluida por vigencia o descartada por dedup).
