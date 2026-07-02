@@ -30,7 +30,7 @@ DIR_EJEMPLO = Path(__file__).parent / "sample_data"
 
 # Marcador de version: cambia con cada despliegue para verificar que la app
 # desplegada tiene el codigo mas reciente.
-VERSION = "2026.07.01-t · ID_COBRADOR por temporalidad + completa desde Moras"
+VERSION = "2026.07.01-u · Mora: ZONA cruza vs No. de Cobrador (col I) de ZONAS"
 
 st.set_page_config(
     page_title="Base Maestra de Cobranza",
