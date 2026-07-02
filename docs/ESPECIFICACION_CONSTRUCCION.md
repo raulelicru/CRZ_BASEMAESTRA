@@ -78,9 +78,9 @@ Esas filas se marcan `CARTERA_MORAS = NUEVA`.
 - `NOMBRE_COMPLETO = NOMBRE + APELLIDO_PATERNO + APELLIDO_MATERNO`
 - `DIRECCION_COMPLETA = CALLE + NUMERO_EXTERIOR + NUMERO_INTERIOR`
 
-**PASO 3 — ZONAS_ASIGNADAS.** `JOIN`: la **`ZONA` de la base (col C) = `No. de
-Cobrador` (columna I)** de ZONAS_ASIGNADAS. Trae `REGION`, `DIVISION`, `RUTA`.
-El `ID_COBRADOR` de Mora es el valor de esa columna I que coincidió con la ZONA.
+**PASO 3 — ZONAS_ASIGNADAS.** `JOIN`: **`ZONA` de la base = `ZONA` (columna A)
+de ZONAS_ASIGNADAS**. Se coloca el **`No. de Cobrador` (columna I)** como
+`ID_COBRADOR` (valor distinto de la ZONA) y se traen `REGION`, `DIVISION`, `RUTA`.
 
 **PASO 4 — CARTERA_MORA.** `JOIN por NO_DAMA`. Trae situación, geolocalización,
 precierres, etc., y se usa para **completar faltantes** (ver §5).
@@ -151,7 +151,7 @@ sobrescribe información válida.**
 | Temporalidad | Fuente del cobrador |
 |---|---|
 | `Inactivas` | `ID_COBRADOR` de **CARTERA_INACTIVAS** |
-| `Mora 1/2/3` | Se cruza la **`ZONA` de la base contra el `No. de Cobrador` (columna I)** de ZONAS_ASIGNADAS |
+| `Mora 1/2/3` | Cruce **`ZONA` (base) = `ZONA` (col A) de ZONAS_ASIGNADAS**; se coloca el **`No. de Cobrador` (col I)** |
 
 Respaldo: si la fuente principal está vacía, usa la otra para no dejar
 registros sin cobrador.

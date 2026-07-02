@@ -375,24 +375,13 @@ def construir_base_maestra(
     df["NOMBRE_COMPLETO"] = _concat_ws(df, ["NOMBRE", "APELLIDO_PATERNO", "APELLIDO_MATERNO"])
     df["DIRECCION_COMPLETA"] = _concat_ws(df, ["CALLE", "NUMERO_EXTERIOR", "NUMERO_INTERIOR"])
 
-    # ---- PASO 3: ZONAS_ASIGNADAS ----
-    # Cobrador de Mora: la ZONA de la base (col C) se cruza contra el
-    # "No. de Cobrador" (columna I, mapeada a ID_COBRADOR) de ZONAS_ASIGNADAS.
-    # Se traen REGION / DIVISION / RUTA de esa fila.
-    zon = src["ZONAS_ASIGNADAS"].copy()
-    if "ID_COBRADOR" in zon.columns and zon["ID_COBRADOR"].notna().any():
-        zon["_ZKEY"] = limpiar_llave(zon["ID_COBRADOR"])
-        zon = zon.drop_duplicates(subset=["_ZKEY"], keep="first")
-        cols_zon = [c for c in ["_ZKEY", "REGION", "DIVISION", "RUTA"] if c in zon.columns]
-        df = df.merge(zon[cols_zon], left_on="ZONA", right_on="_ZKEY",
-                      how="left", suffixes=("", "_ZON"))
-        df["_ZONAS_COB"] = df["_ZKEY"]
-        df.drop(columns=["_ZKEY"], inplace=True)
-    else:
-        # Respaldo: cruce por ZONA = ZONA.
-        zon = zon.drop_duplicates(subset=["ZONA"], keep="first")
-        df = df.merge(zon, on="ZONA", how="left", suffixes=("", "_ZON"))
-        df["_ZONAS_COB"] = df.get("ID_COBRADOR")
+    # ---- PASO 3: ZONAS_ASIGNADAS (por ZONA) ----
+    # Se compara la ZONA de la base con la ZONA (col A) de ZONAS_ASIGNADAS y se
+    # coloca el No. de Cobrador (col I -> ID_COBRADOR), un valor distinto de la
+    # ZONA. Tambien se traen REGION / DIVISION / RUTA.
+    zon = src["ZONAS_ASIGNADAS"].drop_duplicates(subset=["ZONA"], keep="first")
+    df = df.merge(zon, on="ZONA", how="left", suffixes=("", "_ZON"))
+    df["_ZONAS_COB"] = df.get("ID_COBRADOR")
 
     # ---- PASO 4: CARTERA_MORA (por NO_DAMA) ----
     mora = src["CARTERA_MORA"].drop_duplicates(subset=["NO_DAMA"], keep="first")
@@ -602,8 +591,7 @@ def construir_base_maestra(
         return int(limpiar_llave(base[col_base]).isin(vals).sum())
     cobertura = {
         "CLIENTES": _cob("NO_DAMA", "NO_DAMA", "CLIENTES"),
-        # ZONAS: la ZONA de la base cruza contra el No. de Cobrador (col I / ID_COBRADOR).
-        "ZONAS_ASIGNADAS": _cob("ZONA", "ID_COBRADOR", "ZONAS_ASIGNADAS"),
+        "ZONAS_ASIGNADAS": _cob("ZONA", "ZONA", "ZONAS_ASIGNADAS"),
         "CARTERA_MORA": _cob("NO_DAMA", "NO_DAMA", "CARTERA_MORA"),
         "LAYOUT_ARABELA": _cob("NO_DAMA", "NO_DAMA", "LAYOUT_ARABELA"),
     }
