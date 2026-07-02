@@ -362,6 +362,13 @@ def construir_base_maestra(
             for c in ("SALDO_DAMA", "PAGOS_DAMA"):
                 tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
 
+    # El ID_COBRADOR de cartera (para Inactivas) se guarda aparte para no
+    # colisionar con el de ZONAS_ASIGNADAS (para Mora 1/2/3) en el PASO 3.
+    if "ID_COBRADOR" in tmp.columns:
+        tmp = tmp.rename(columns={"ID_COBRADOR": "_IDCOB_CART"})
+    else:
+        tmp["_IDCOB_CART"] = pd.NA
+
     # ---- PASO 2: CLIENTES ----
     cli = src["CLIENTES"].drop_duplicates(subset=["NO_DAMA"], keep="first")
     df = tmp.merge(cli, on="NO_DAMA", how="left", suffixes=("", "_CLI"))
@@ -399,6 +406,15 @@ def construir_base_maestra(
     _completar("ESTADO", df.get("ESTADO_MORA"), comp.get("ESTADO"))
     _completar("TELEFONO_CASA", df.get("TELEFONO_CASA_MORA"))
     _completar("TELEFONO_CELULAR", df.get("TELEFONO_CELULAR_MORA"))
+    # Identificacion / cartera: completar desde Moras cuando falten (sin sobrescribir)
+    _completar("DIGITO_DAMA", df.get("DIGITO_DAMA_MORA"))
+    _completar("SEGMENTO", df.get("SEGMENTO_MORA"))
+    _completar("ESTADO_PROCESO", df.get("ESTADO_PROCESO_MORA"))
+    if "NOMBRE_MORA" in df.columns:
+        df["NOMBRE_COMPLETO"] = _norm_txt(df["NOMBRE_COMPLETO"]).fillna(_norm_txt(df["NOMBRE_MORA"]))
+    if "SALDO_DAMA_MORA" in df.columns:  # SALDO_DAMA es numerico
+        df["SALDO_DAMA"] = (pd.to_numeric(df["SALDO_DAMA"], errors="coerce")
+                            .fillna(pd.to_numeric(df["SALDO_DAMA_MORA"], errors="coerce")))
 
     # Recalcular DIRECCION_COMPLETA con la calle/numeros ya completados; si sigue
     # vacia y hay domicilio de Moras, usar el texto completo.
@@ -455,6 +471,18 @@ def construir_base_maestra(
     df["DIAS_MORA"] = (fecha_dia - df["FECHA_FACTURA"]).dt.days
     df["DIAS_MORA"] = df["DIAS_MORA"].astype("Int64")
     df["TEMPORALIDAD"] = _temporalidad_campania(df["CAMPANA_SALDO"])
+
+    # ID_COBRADOR segun temporalidad: Inactivas -> cartera; Mora 1/2/3 -> ZONAS.
+    # Con respaldo cruzado para maximizar cobertura.
+    zonas_cob = _norm_txt(df["ID_COBRADOR"]) if "ID_COBRADOR" in df.columns \
+        else pd.Series(pd.NA, index=df.index, dtype="string")
+    cart_cob = _norm_txt(df["_IDCOB_CART"]) if "_IDCOB_CART" in df.columns \
+        else pd.Series(pd.NA, index=df.index, dtype="string")
+    inact = df["TEMPORALIDAD"] == "Inactivas"
+    df["ID_COBRADOR"] = (cart_cob.where(inact, zonas_cob)
+                         .fillna(zonas_cob).fillna(cart_cob))
+    if "_IDCOB_CART" in df.columns:
+        df.drop(columns=["_IDCOB_CART"], inplace=True)
 
     # ---- PASO 8: pagos y saldos segun reglas de cobranza ----
     deuda = df["SALDO_DAMA"].fillna(0)
