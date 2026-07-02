@@ -375,22 +375,11 @@ def construir_base_maestra(
     df["NOMBRE_COMPLETO"] = _concat_ws(df, ["NOMBRE", "APELLIDO_PATERNO", "APELLIDO_MATERNO"])
     df["DIRECCION_COMPLETA"] = _concat_ws(df, ["CALLE", "NUMERO_EXTERIOR", "NUMERO_INTERIOR"])
 
-    # ---- PASO 3: ZONAS_ASIGNADAS ----
-    # El cobrador de Mora se obtiene cruzando la ZONA de la base (col C) contra
-    # la columna "No. de Cobrador" (col I) de ZONAS_ASIGNADAS, mapeada a
-    # ID_COBRADOR. De ahi tambien se traen REGION / DIVISION / RUTA.
-    zon = src["ZONAS_ASIGNADAS"].copy()
-    if "ID_COBRADOR" in zon.columns and zon["ID_COBRADOR"].notna().any():
-        zon["_ZONAS_COB"] = limpiar_llave(zon["ID_COBRADOR"])
-        zon = zon.drop_duplicates(subset=["_ZONAS_COB"], keep="first")
-        cols_zon = [c for c in ["_ZONAS_COB", "REGION", "DIVISION", "RUTA"] if c in zon.columns]
-        df = df.merge(zon[cols_zon], left_on="ZONA", right_on="_ZONAS_COB",
-                      how="left", suffixes=("", "_ZON"))
-    else:
-        # Respaldo: cruce clasico por ZONA = ZONA.
-        zon = zon.drop_duplicates(subset=["ZONA"], keep="first")
-        df = df.merge(zon, on="ZONA", how="left", suffixes=("", "_ZON"))
-        df["_ZONAS_COB"] = df.get("ID_COBRADOR")
+    # ---- PASO 3: ZONAS_ASIGNADAS (por ZONA) ----
+    # Cruce ZONA (base) = ZONA (ZONAS). Se traen REGION/DIVISION/RUTA y el
+    # No. de Cobrador (ID_COBRADOR), que es un valor DISTINTO de la ZONA.
+    zon = src["ZONAS_ASIGNADAS"].drop_duplicates(subset=["ZONA"], keep="first")
+    df = df.merge(zon, on="ZONA", how="left", suffixes=("", "_ZON"))
 
     # ---- PASO 4: CARTERA_MORA (por NO_DAMA) ----
     mora = src["CARTERA_MORA"].drop_duplicates(subset=["NO_DAMA"], keep="first")
@@ -487,15 +476,15 @@ def construir_base_maestra(
 
     # ID_COBRADOR segun temporalidad: Inactivas -> cartera; Mora 1/2/3 -> ZONAS.
     # Con respaldo cruzado para maximizar cobertura.
-    zonas_cob = _norm_txt(df["_ZONAS_COB"]) if "_ZONAS_COB" in df.columns \
+    zonas_cob = _norm_txt(df["ID_COBRADOR"]) if "ID_COBRADOR" in df.columns \
         else pd.Series(pd.NA, index=df.index, dtype="string")
     cart_cob = _norm_txt(df["_IDCOB_CART"]) if "_IDCOB_CART" in df.columns \
         else pd.Series(pd.NA, index=df.index, dtype="string")
     inact = df["TEMPORALIDAD"] == "Inactivas"
     df["ID_COBRADOR"] = (cart_cob.where(inact, zonas_cob)
                          .fillna(zonas_cob).fillna(cart_cob))
-    df.drop(columns=[c for c in ("_IDCOB_CART", "_ZONAS_COB") if c in df.columns],
-            inplace=True)
+    if "_IDCOB_CART" in df.columns:
+        df.drop(columns=["_IDCOB_CART"], inplace=True)
 
     # ---- PASO 8: pagos y saldos segun reglas de cobranza ----
     deuda = df["SALDO_DAMA"].fillna(0)
@@ -600,8 +589,7 @@ def construir_base_maestra(
         return int(limpiar_llave(base[col_base]).isin(vals).sum())
     cobertura = {
         "CLIENTES": _cob("NO_DAMA", "NO_DAMA", "CLIENTES"),
-        # ZONAS: la ZONA de la base cruza contra el No. de Cobrador (ID_COBRADOR).
-        "ZONAS_ASIGNADAS": _cob("ZONA", "ID_COBRADOR", "ZONAS_ASIGNADAS"),
+        "ZONAS_ASIGNADAS": _cob("ZONA", "ZONA", "ZONAS_ASIGNADAS"),
         "CARTERA_MORA": _cob("NO_DAMA", "NO_DAMA", "CARTERA_MORA"),
         "LAYOUT_ARABELA": _cob("NO_DAMA", "NO_DAMA", "LAYOUT_ARABELA"),
     }
